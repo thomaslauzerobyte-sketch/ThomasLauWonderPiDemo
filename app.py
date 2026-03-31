@@ -23,8 +23,13 @@ app = Flask(__name__, static_folder=str(ROOT / "web" / "static"), template_folde
 
 
 # ── Config ────────────────────────────────────────────────────────
+_runtime_overrides: dict[str, Any] = {}
+
+
 def _cfg() -> dict[str, Any]:
-    return load_config()
+    cfg = load_config()
+    cfg.update(_runtime_overrides)
+    return cfg
 
 
 # ── Camera Singleton ──────────────────────────────────────────────
@@ -733,10 +738,34 @@ def api_arm_buzzer():
         return jsonify(ok=False, error=str(e)), 500
 
 
-# ── Routes: Blue Detect ───────────────────────────────────────────
+# ── Routes: Detection Config ──────────────────────────────────────
+@app.route("/api/config/detect_method", methods=["GET", "POST"])
+def api_detect_method():
+    if request.method == "GET":
+        cfg = _cfg()
+        method = cfg.get("detect_method", "blue")
+        cb = cfg.get("checkerboard", {})
+        return jsonify(ok=True, method=method,
+                       checkerboard={"cols": cb.get("cols", 5), "rows": cb.get("rows", 4)})
+    data = request.get_json(silent=True) or {}
+    method = data.get("method", "blue")
+    if method not in ("blue", "checkerboard", "tag"):
+        return jsonify(ok=False, error="method 仅支持 blue / checkerboard / tag"), 400
+    _runtime_overrides["detect_method"] = method
+    if "cols" in data or "rows" in data:
+        cb = dict(_cfg().get("checkerboard", {}))
+        if "cols" in data:
+            cb["cols"] = int(data["cols"])
+        if "rows" in data:
+            cb["rows"] = int(data["rows"])
+        _runtime_overrides["checkerboard"] = cb
+    return jsonify(ok=True, method=method)
+
+
+# ── Routes: Object Detect ────────────────────────────────────────
 @app.route("/api/detect/blue", methods=["POST"])
 def api_detect_blue():
-    """Grab one frame, detect blue object, return annotated JPEG + JSON."""
+    """Grab one frame, detect object, return annotated JPEG + JSON."""
     if not camera.is_open:
         return jsonify(ok=False, error="相机未打开"), 503
     from blue_detector import detect_from_config, draw_detection
@@ -785,18 +814,30 @@ _calib_points: list[dict[str, Any]] = []
 @app.route("/api/calibrate/status")
 def api_calib_status():
     from calibration import load_calibration
+    from calibration3d import load_calibration3d
     calib = load_calibration()
+    calib3d = load_calibration3d()
     return jsonify(
         ok=True,
         points=_calib_points,
         calibrated=calib is not None and "H" in (calib or {}),
+        calibrated3d=calib3d is not None and "A" in (calib3d or {}),
         saved_points=calib.get("points", []) if calib else [],
+        saved_points3d=calib3d.get("points", []) if calib3d else [],
     )
 
 
 @app.route("/api/calibrate/point", methods=["POST"])
 def api_calib_point():
-    """Record one calibration point: detect blue block pixel + user-supplied arm coords."""
+    """Record one calibration point: detect blue block pixel/depth + user-supplied arm coords.
+
+    数据结构（同时服务于 2D Homography 与 depth-aware 3D 标定）:
+        {
+          "pixel": [u, v],
+          "arm": [x, y],
+          "depth_mm": d  # 若有深度，则记录
+        }
+    """
     data = request.get_json(silent=True) or {}
     arm_x = data.get("arm_x")
     arm_y = data.get("arm_y")
@@ -812,11 +853,21 @@ def api_calib_point():
     cfg = _cfg()
     det = detect_from_config(bgr, cfg, depth=depth)
     if det is None:
-        return jsonify(ok=False, error="未检测到蓝色物体，请将积木放入视野"), 400
+        method = cfg.get("detect_method", "blue")
+        if method == "checkerboard":
+            hint = "棋盘格标定板"
+        elif method == "tag":
+            hint = "黑白标记板(TAG)"
+        else:
+            hint = "蓝色物体"
+        return jsonify(ok=False, error=f"未检测到{hint}，请将目标放入视野"), 400
+
+    depth_mm = det.get("depth_mm")
 
     point = {
         "pixel": list(det["center_px"]),
         "arm": [float(arm_x), float(arm_y)],
+        "depth_mm": int(depth_mm) if depth_mm is not None else None,
     }
     _calib_points.append(point)
     return jsonify(ok=True, point=point, total=len(_calib_points))
@@ -831,14 +882,32 @@ def api_calib_reset():
 @app.route("/api/calibrate/compute", methods=["POST"])
 def api_calib_compute():
     from calibration import calibrate_and_save
+    from calibration3d import calibrate3d_and_save
+
     points = _calib_points[:]
     if len(points) < 4:
         return jsonify(ok=False, error=f"需要至少 4 个标定点，当前 {len(points)} 个"), 400
+
     try:
-        data = calibrate_and_save(points)
+        data2d = calibrate_and_save(points)
     except Exception as e:
-        return jsonify(ok=False, error=str(e)), 500
-    return jsonify(ok=True, points=data["points"], H=data["H"])
+        return jsonify(ok=False, error=f"2D 标定失败: {e}"), 500
+
+    data3d: dict | None = None
+    # 仅当存在 depth_mm 时才尝试 3D 标定
+    if any(p.get("depth_mm") not in (None, 0) for p in points):
+        try:
+            data3d = calibrate3d_and_save(points)
+        except Exception:
+            data3d = None
+
+    return jsonify(
+        ok=True,
+        points=data2d["points"],
+        H=data2d["H"],
+        points3d=data3d["points"] if data3d else None,
+        A=data3d["A"] if data3d else None,
+    )
 
 
 # ── Routes: Teach ─────────────────────────────────────────────────
@@ -882,28 +951,60 @@ def api_teach_pick():
             return jsonify(ok=False, error=f"手动坐标无效: {err}"), 400
         arm_pos = [mx, my]
     elif pixel is not None:
-        from calibration import get_homography_matrix, pixel_to_arm
-        H = get_homography_matrix()
-        if H is not None:
+        # 优先使用 depth-aware 3D 标定，将 (u, v, depth_mm) → (x, y)
+        ax = ay = None
+        if depth_mm is not None:
             try:
-                ax, ay = pixel_to_arm(tuple(pixel), H)
-                err = _validate_ik_coords(ax, ay)
-                if err is None:
-                    arm_pos = [round(ax, 4), round(ay, 4)]
-                else:
-                    warning = f"标定映射坐标超范围({ax:.2f}, {ay:.2f})，请手动填写 IK 坐标"
+                from calibration3d import pixel_depth_to_arm_xy, load_calibration3d
+
+                calib3d = load_calibration3d()
+                if calib3d is not None:
+                    ax3, ay3 = pixel_depth_to_arm_xy(tuple(pixel), depth_mm, calib3d)
+                    err3 = _validate_ik_coords(ax3, ay3)
+                    if err3 is None:
+                        ax, ay = ax3, ay3
+                    else:
+                        warning = f"3D 标定坐标超范围({ax3*1000:.0f}, {ay3*1000:.0f}) mm，建议在示教中手动填写 X/Y"
             except Exception:
-                warning = "标定矩阵映射失败，请手动填写 IK 坐标"
-        else:
-            warning = "未完成标定，请手动填写 IK 坐标"
+                # 回退到 2D Homography
+                pass
+
+        if ax is None or ay is None:
+            from calibration import get_homography_matrix, pixel_to_arm
+
+            H = get_homography_matrix()
+            if H is not None:
+                try:
+                    ax2, ay2 = pixel_to_arm(tuple(pixel), H)
+                    err2 = _validate_ik_coords(ax2, ay2)
+                    if err2 is None:
+                        ax, ay = ax2, ay2
+                    else:
+                        w = f"2D 标定坐标超范围({ax2*1000:.0f}, {ay2*1000:.0f}) mm，建议在示教中手动填写 X/Y"
+                        warning = warning or w
+                except Exception:
+                    w = "标定矩阵映射失败，请在示教中手动填写 X/Y"
+                    warning = warning or w
+            else:
+                warning = warning or "尚未完成标定，请在示教中手动填写 X/Y"
+
+        if ax is not None and ay is not None:
+            arm_pos = [round(ax, 4), round(ay, 4)]
 
     if pixel is None and arm_pos is None:
-        return jsonify(ok=False, error="未检测到蓝色积木，且未提供手动坐标"), 400
+        return jsonify(ok=False, error="未检测到目标物体，且未提供手动坐标"), 400
+
+    cfg = _cfg()
+    tc = cfg.get("teach", {})
+    z_pick = float(tc.get("pick_z", -0.02))
+    z_move = float(tc.get("move_z", 0.05))
 
     _teach_state["pick"] = {
         "pixel": pixel,
         "arm": arm_pos,
         "depth_mm": depth_mm,
+        "z_pick": z_pick,
+        "z_move": z_move,
     }
     resp = dict(ok=True, pick=_teach_state["pick"])
     if warning:
@@ -940,28 +1041,59 @@ def api_teach_place():
             return jsonify(ok=False, error=f"手动坐标无效: {err}"), 400
         arm_pos = [mx, my]
     elif pixel is not None:
-        from calibration import get_homography_matrix, pixel_to_arm
-        H = get_homography_matrix()
-        if H is not None:
+        # depth-aware 3D 标定优先
+        ax = ay = None
+        if depth_mm is not None:
             try:
-                ax, ay = pixel_to_arm(tuple(pixel), H)
-                err = _validate_ik_coords(ax, ay)
-                if err is None:
-                    arm_pos = [round(ax, 4), round(ay, 4)]
-                else:
-                    warning = f"标定映射坐标超范围({ax:.2f}, {ay:.2f})，请手动填写 IK 坐标"
+                from calibration3d import pixel_depth_to_arm_xy, load_calibration3d
+
+                calib3d = load_calibration3d()
+                if calib3d is not None:
+                    ax3, ay3 = pixel_depth_to_arm_xy(tuple(pixel), depth_mm, calib3d)
+                    err3 = _validate_ik_coords(ax3, ay3)
+                    if err3 is None:
+                        ax, ay = ax3, ay3
+                    else:
+                        warning = f"3D 标定坐标超范围({ax3*1000:.0f}, {ay3*1000:.0f}) mm，建议在示教中手动填写 X/Y"
             except Exception:
-                warning = "标定矩阵映射失败，请手动填写 IK 坐标"
-        else:
-            warning = "未完成标定，请手动填写 IK 坐标"
+                pass
+
+        if ax is None or ay is None:
+            from calibration import get_homography_matrix, pixel_to_arm
+
+            H = get_homography_matrix()
+            if H is not None:
+                try:
+                    ax2, ay2 = pixel_to_arm(tuple(pixel), H)
+                    err2 = _validate_ik_coords(ax2, ay2)
+                    if err2 is None:
+                        ax, ay = ax2, ay2
+                    else:
+                        w = f"2D 标定坐标超范围({ax2*1000:.0f}, {ay2*1000:.0f}) mm，建议在示教中手动填写 X/Y"
+                        warning = warning or w
+                except Exception:
+                    w = "标定矩阵映射失败，请在示教中手动填写 X/Y"
+                    warning = warning or w
+            else:
+                warning = warning or "尚未完成标定，请在示教中手动填写 X/Y"
+
+        if ax is not None and ay is not None:
+            arm_pos = [round(ax, 4), round(ay, 4)]
 
     if pixel is None and arm_pos is None:
-        return jsonify(ok=False, error="未检测到蓝色积木，且未提供手动坐标"), 400
+        return jsonify(ok=False, error="未检测到目标物体，且未提供手动坐标"), 400
+
+    cfg = _cfg()
+    tc = cfg.get("teach", {})
+    z_pick = float(tc.get("pick_z", -0.02))
+    z_move = float(tc.get("move_z", 0.05))
 
     _teach_state["place"] = {
         "pixel": pixel,
         "arm": arm_pos,
         "depth_mm": depth_mm,
+        "z_pick": z_pick,
+        "z_move": z_move,
     }
     resp = dict(ok=True, place=_teach_state["place"])
     if warning:
@@ -1052,14 +1184,32 @@ def api_execute():
         if ok and bgr is not None:
             det = detect_from_config(bgr, cfg, depth=depth)
             if det is not None:
-                H = get_homography_matrix()
-                if H is not None:
+                px = tuple(det["center_px"])
+                depth_mm = det.get("depth_mm")
+
+                # 1) depth-aware 3D 标定优先
+                if depth_mm is not None:
                     try:
-                        ax, ay = pixel_to_arm(det["center_px"], H)
-                        if _validate_ik_coords(ax, ay) is None:
-                            pick_arm = (ax, ay)
+                        from calibration3d import pixel_depth_to_arm_xy, load_calibration3d
+
+                        calib3d = load_calibration3d()
+                        if calib3d is not None:
+                            ax3, ay3 = pixel_depth_to_arm_xy(px, depth_mm, calib3d)
+                            if _validate_ik_coords(ax3, ay3) is None:
+                                pick_arm = (ax3, ay3)
                     except Exception:
-                        pass
+                        pick_arm = None
+
+                # 2) 回退到 2D Homography
+                if pick_arm is None:
+                    H = get_homography_matrix()
+                    if H is not None:
+                        try:
+                            ax2, ay2 = pixel_to_arm(px, H)
+                            if _validate_ik_coords(ax2, ay2) is None:
+                                pick_arm = (ax2, ay2)
+                        except Exception:
+                            pass
 
     try:
         d = _get_arm_driver()

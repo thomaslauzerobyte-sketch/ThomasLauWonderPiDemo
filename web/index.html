@@ -183,14 +183,37 @@ label{font-size:13px;color:var(--muted)}
   <div id="tab-teach" style="display:none" class="fade-in">
     <div class="video-box">
       <img id="teachStream" style="display:none">
-      <div class="overlay" id="teachPlaceholder">打开相机后显示蓝色检测画面</div>
+      <div class="overlay" id="teachPlaceholder">打开相机后显示目标检测画面</div>
+    </div>
+
+    <!-- Detection Method -->
+    <div class="card">
+      <h3>检测方式</h3>
+      <div class="btn-row" style="align-items:end">
+        <span><label>检测方法</label><br>
+          <select id="detectMethod" style="width:160px">
+            <option value="blue">蓝色 HSV</option>
+            <option value="checkerboard">棋盘格标定板</option>
+            <option value="tag" selected>黑白标记板 (TAG)</option>
+          </select>
+        </span>
+        <span id="cbParamsGroup">
+          <label>内角点列×行</label><br>
+          <span style="display:flex;gap:4px;align-items:center">
+            <input type="number" id="cbCols" value="5" min="2" max="20" style="width:52px">
+            ×
+            <input type="number" id="cbRows" value="4" min="2" max="20" style="width:52px">
+          </span>
+        </span>
+        <button class="btn btn-outline btn-sm" id="btnApplyDetect">应用</button>
+      </div>
     </div>
 
     <!-- Calibration -->
     <div class="card">
       <h3>1. 工作区标定</h3>
       <p style="color:var(--muted);font-size:13px;margin-bottom:8px">
-        将蓝色积木依次放到 4 个已知臂坐标位置，每次输入坐标后点击「记录」。
+        将目标物体依次放到 4 个已知臂坐标位置，每次输入坐标后点击「记录」。
       </p>
       <div class="btn-row" style="align-items:end">
         <span><label>臂 X</label><br><input type="number" id="calibArmX" value="0" step="0.01" style="width:80px"></span>
@@ -244,7 +267,7 @@ label{font-size:13px;color:var(--muted)}
       <div class="step-row" style="border-bottom:none">
         <div class="num" id="teachStep3Num">3</div>
         <span>任务名称</span>
-        <input type="text" id="teachTaskName" value="pick_blue_block" style="flex:1;min-width:120px">
+        <input type="text" id="teachTaskName" value="pick_target" style="flex:1;min-width:120px">
         <button class="btn btn-success btn-sm" id="btnTeachSave" disabled>保存任务</button>
       </div>
     </div>
@@ -639,6 +662,44 @@ updateCamUI = function(open, backend){
   _origUpdateCamUI(open, backend);
 };
 
+// ── Detection Method ──
+function updateCbParamsVisibility(){
+  const m = $('#detectMethod').value;
+  $('#cbParamsGroup').style.display = m === 'checkerboard' ? '' : 'none';
+}
+$('#detectMethod').onchange = updateCbParamsVisibility;
+updateCbParamsVisibility();
+
+$('#btnApplyDetect').onclick = async () => {
+  const method = $('#detectMethod').value;
+  const body = { method };
+  if(method === 'checkerboard'){
+    body.cols = parseInt($('#cbCols').value) || 5;
+    body.rows = parseInt($('#cbRows').value) || 4;
+  }
+  try{
+    const r = await fetch('/api/config/detect_method',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d = await r.json();
+    if(d.ok) log(`检测方式已切换: ${method}`,'ok');
+    else log(d.error,'err');
+  }catch(e){log('错误: '+e,'err')}
+};
+
+(async()=>{
+  try{
+    const r = await fetch('/api/config/detect_method');
+    const d = await r.json();
+    if(d.ok){
+      $('#detectMethod').value = d.method;
+      if(d.checkerboard){
+        $('#cbCols').value = d.checkerboard.cols || 5;
+        $('#cbRows').value = d.checkerboard.rows || 4;
+      }
+      updateCbParamsVisibility();
+    }
+  }catch(e){}
+})();
+
 // ── Calibration ──
 let calibPoints = [];
 function renderCalibTable(){
@@ -716,6 +777,8 @@ $('#btnTeachPick').onclick = async () => {
       if(p.arm) txt += `IK(${(p.arm[0]*1000).toFixed(0)}, ${(p.arm[1]*1000).toFixed(0)}) mm`;
       else txt += '⚠️ 无IK坐标';
       if(p.depth_mm) txt += ` 深度=${p.depth_mm}mm`;
+      if(p.z_pick !== undefined) txt += ` Z抓取=${(p.z_pick*1000).toFixed(0)}mm`;
+      if(p.z_move !== undefined) txt += ` Z抬起=${(p.z_move*1000).toFixed(0)}mm`;
       $('#teachPickText').textContent = txt;
       $('#teachPickInfo').style.display = '';
       teachHasPick = true;
@@ -743,6 +806,8 @@ $('#btnTeachPlace').onclick = async () => {
       if(p.arm) txt += `IK(${(p.arm[0]*1000).toFixed(0)}, ${(p.arm[1]*1000).toFixed(0)}) mm`;
       else txt += '⚠️ 无IK坐标';
       if(p.depth_mm) txt += ` 深度=${p.depth_mm}mm`;
+      if(p.z_pick !== undefined) txt += ` Z抓取=${(p.z_pick*1000).toFixed(0)}mm`;
+      if(p.z_move !== undefined) txt += ` Z抬起=${(p.z_move*1000).toFixed(0)}mm`;
       $('#teachPlaceText').textContent = txt;
       $('#teachPlaceInfo').style.display = '';
       teachHasPlace = true;

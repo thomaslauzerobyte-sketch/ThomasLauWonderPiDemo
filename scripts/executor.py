@@ -38,37 +38,34 @@ def execute_pick_place(
     step_delay = float(arm_cfg.get("step_delay_sec", 0.5))
     grip_delay = min(step_delay, 0.6)
 
-    d.home()
-    time.sleep(move_dur + 0.2)
-
+    # 1. 张开夹爪
     d.grip_open()
     time.sleep(grip_delay)
 
+    # 2. 移动到抓取位置（先到安全高度，再到抓取高度）
     d.move_to(pick[0], pick[1], move_z)
     time.sleep(move_dur + 0.1)
-
     d.move_to(pick[0], pick[1], pick_z)
     time.sleep(move_dur + 0.1)
 
+    # 3. 闭合夹爪
     d.grip_close()
     time.sleep(grip_delay)
 
+    # 4. 移动到放置位置（先抬起再平移）
     d.move_to(pick[0], pick[1], move_z)
     time.sleep(move_dur + 0.1)
-
     d.move_to(place[0], place[1], move_z)
     time.sleep(move_dur + 0.1)
-
     d.move_to(place[0], place[1], pick_z)
     time.sleep(move_dur + 0.1)
 
+    # 5. 张开夹爪
     d.grip_open()
     time.sleep(grip_delay)
 
     d.move_to(place[0], place[1], move_z)
     time.sleep(move_dur + 0.1)
-
-    d.home()
 
     if hasattr(d, "action_log"):
         return d.action_log

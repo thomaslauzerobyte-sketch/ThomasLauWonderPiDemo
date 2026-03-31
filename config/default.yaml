@@ -38,15 +38,28 @@ inference:
   onnx_input_size: [224, 224]
   normalize: true
 
+# detect_method: blue | checkerboard | tag
+detect_method: tag
+
 blue_detect:
   hsv_lower: [100, 80, 50]
   hsv_upper: [130, 255, 255]
   min_area: 500
   blur_kernel: 5
 
+# 棋盘格标定板检测参数
+# cols/rows: 棋盘格内角点数（不含外框），例如 7×5 格的板 → cols=6, rows=4
+checkerboard:
+  cols: 5
+  rows: 4
+
+# 黑白标记板(TAG) 检测参数
+tag_detect:
+  min_area: 800
+
 teach:
-  pick_z: -0.02
-  move_z: 0.05
+  pick_z: 0.02
+  move_z: 0.08
 
 arm:
   # driver: mock | hiwonder
