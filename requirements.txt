@@ -1,0 +1,8 @@
+numpy>=1.24.0
+opencv-python-headless>=4.8.0
+PyYAML>=6.0
+flask>=3.0.0
+# 可选：ONNX 推理（树莓派上请选与系统匹配的 wheel）
+# onnxruntime>=1.16.0
+# 可选：arm.mock=false 且使用串口占位驱动时
+# pyserial>=3.5

@@ -1,0 +1,951 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WonderPi 控制台</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+:root{
+  --bg:#0f1117;--surface:#1a1d28;--card:#222636;--border:#2e3348;
+  --text:#e2e4ed;--muted:#8b8fa3;--accent:#4f8cff;--accent2:#38d9a9;
+  --danger:#ff6b6b;--warn:#ffd43b;--radius:10px;
+}
+body{font-family:'Segoe UI','PingFang SC','Noto Sans SC',sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
+a{color:var(--accent);text-decoration:none}
+
+.top-bar{display:flex;align-items:center;gap:12px;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:90}
+.top-bar h1{font-size:18px;font-weight:700;letter-spacing:.5px}
+.top-bar .dot{width:8px;height:8px;border-radius:50%;background:var(--danger);flex-shrink:0;transition:background .3s}
+.top-bar .dot.on{background:var(--accent2)}
+.top-bar .status{font-size:13px;color:var(--muted)}
+
+.layout{display:grid;grid-template-columns:1fr 360px;gap:0;min-height:calc(100vh - 52px)}
+@media(max-width:900px){.layout{grid-template-columns:1fr}}
+
+.main{padding:20px 24px;overflow-y:auto}
+.panel{padding:16px 20px;overflow-y:auto;background:var(--surface);border-left:1px solid var(--border)}
+@media(max-width:900px){.panel{border-left:none;border-top:1px solid var(--border)}}
+
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:16px}
+.card h3{font-size:14px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px}
+
+.video-box{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
+.video-box img,.video-box video{width:100%;height:100%;object-fit:contain}
+.video-box .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:15px;pointer-events:none}
+.video-box .badge{position:absolute;top:8px;right:8px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:var(--danger);color:#fff}
+
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;color:#fff}
+.btn-primary{background:var(--accent)}
+.btn-primary:hover{background:#6ba0ff}
+.btn-success{background:var(--accent2);color:#111}
+.btn-success:hover{background:#5ce0b8}
+.btn-danger{background:var(--danger)}
+.btn-danger:hover{background:#ff8787}
+.btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
+.btn-outline:hover{border-color:var(--accent);color:var(--accent)}
+.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn-sm{padding:5px 10px;font-size:12px}
+
+.btn-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+
+input[type=number],input[type=text],select{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;width:80px}
+input[type=text]{width:auto;min-width:120px}
+label{font-size:13px;color:var(--muted)}
+
+.log{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:'Fira Code','Cascadia Code',monospace;font-size:12px;max-height:240px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:var(--muted);line-height:1.6}
+.log .ok{color:var(--accent2)}.log .err{color:var(--danger)}.log .info{color:var(--accent)}
+
+.thumb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:6px}
+.thumb-grid img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:4px;cursor:pointer;border:2px solid transparent;transition:border .15s}
+.thumb-grid img:hover{border-color:var(--accent)}
+.thumb-grid img.active{border-color:var(--accent2)}
+
+.list-item{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:6px;cursor:pointer;transition:background .12s;font-size:13px}
+.list-item:hover{background:var(--bg)}
+.list-item .meta{color:var(--muted);font-size:12px}
+
+.tabs{display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--border)}
+.tab{padding:8px 16px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
+.tab.active{color:var(--accent);border-color:var(--accent)}
+
+.result-json{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:monospace;font-size:12px;max-height:180px;overflow:auto;color:var(--accent2)}
+
+.fade-in{animation:fadeIn .3s ease}
+@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+
+.step-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
+.step-row .num{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
+.step-row .num.done{background:var(--accent2);color:#111}
+.step-row .num.todo{background:var(--border);color:var(--muted)}
+.step-row .num.active{background:var(--accent);color:#fff}
+.calib-table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}
+.calib-table th,.calib-table td{padding:4px 8px;text-align:left;border-bottom:1px solid var(--border)}
+.calib-table th{color:var(--muted);font-weight:600}
+.teach-point{padding:10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);margin-bottom:8px;font-size:13px}
+.teach-point .label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+</style>
+</head>
+<body>
+
+<div class="top-bar">
+  <div class="dot" id="camDot"></div>
+  <h1>WonderPi 控制台</h1>
+  <span class="status" id="camStatus">相机未连接</span>
+  <span style="flex:1"></span>
+  <button class="btn btn-primary btn-sm" id="btnCamOpen">打开相机</button>
+  <button class="btn btn-danger btn-sm" id="btnCamClose" disabled>关闭相机</button>
+</div>
+
+<div class="layout">
+<!-- ─── MAIN AREA ──────────────────────────────── -->
+<div class="main">
+
+  <div class="tabs">
+    <div class="tab active" data-tab="live">实时预览</div>
+    <div class="tab" data-tab="videos">视频管理</div>
+    <div class="tab" data-tab="frames">帧管理</div>
+    <div class="tab" data-tab="teach">示教学习</div>
+    <div class="tab" data-tab="pipeline">一键流水线</div>
+  </div>
+
+  <!-- Live -->
+  <div id="tab-live" class="fade-in">
+    <div class="video-box" id="streamBox">
+      <img id="streamImg" style="display:none">
+      <div class="overlay" id="streamPlaceholder">打开相机后显示实时画面</div>
+      <div class="badge" id="recBadge" style="display:none">● REC</div>
+    </div>
+    <div class="btn-row">
+      <button class="btn btn-success" id="btnSnapshot">抓拍一帧</button>
+      <button class="btn btn-primary" id="btnSnapInfer">抓拍 + 识别</button>
+      <span style="margin-left:auto;display:flex;align-items:center;gap:6px">
+        <label>录制秒数</label>
+        <input type="number" id="recSec" value="10" min="1" max="300" style="width:64px">
+        <button class="btn btn-danger" id="btnRecord">开始录制</button>
+      </span>
+    </div>
+    <div id="snapResult" style="display:none" class="card fade-in">
+      <h3>抓拍结果</h3>
+      <img id="snapImg" style="max-width:100%;border-radius:6px;margin-bottom:8px">
+      <div class="result-json" id="snapDets"></div>
+    </div>
+  </div>
+
+  <!-- Videos -->
+  <div id="tab-videos" style="display:none" class="fade-in">
+    <div class="btn-row">
+      <button class="btn btn-outline btn-sm" onclick="loadVideos()">刷新列表</button>
+    </div>
+    <div class="card">
+      <h3>已录制视频</h3>
+      <div id="videoList"></div>
+    </div>
+    <div id="videoPreview" style="display:none" class="card">
+      <h3>预览</h3>
+      <video id="videoPlayer" controls style="width:100%;border-radius:6px"></video>
+      <div class="btn-row" style="margin-top:10px">
+        <label>拆帧步长</label>
+        <input type="number" id="extractStep" value="1" min="1" max="100" style="width:64px">
+        <button class="btn btn-primary btn-sm" id="btnExtract">拆帧</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Frames -->
+  <div id="tab-frames" style="display:none" class="fade-in">
+    <div class="btn-row">
+      <button class="btn btn-outline btn-sm" onclick="loadFrameDirs()">刷新</button>
+    </div>
+    <div class="card">
+      <h3>帧目录</h3>
+      <div id="frameDirList"></div>
+    </div>
+    <div id="frameDetail" style="display:none" class="card fade-in">
+      <h3 id="frameDirTitle">帧</h3>
+      <div class="thumb-grid" id="frameGrid"></div>
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn btn-primary btn-sm" id="btnInferDir">批量识别本目录</button>
+      </div>
+    </div>
+    <div id="inferResult" style="display:none" class="card fade-in">
+      <h3>识别结果</h3>
+      <img id="inferImg" style="max-width:100%;border-radius:6px;margin-bottom:8px">
+      <div class="result-json" id="inferJson"></div>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn btn-success btn-sm" id="btnArmFromInfer">发送到机械臂</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Teach -->
+  <div id="tab-teach" style="display:none" class="fade-in">
+    <div class="video-box">
+      <img id="teachStream" style="display:none">
+      <div class="overlay" id="teachPlaceholder">打开相机后显示蓝色检测画面</div>
+    </div>
+
+    <!-- Calibration -->
+    <div class="card">
+      <h3>1. 工作区标定</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:8px">
+        将蓝色积木依次放到 4 个已知臂坐标位置，每次输入坐标后点击「记录」。
+      </p>
+      <div class="btn-row" style="align-items:end">
+        <span><label>臂 X</label><br><input type="number" id="calibArmX" value="0" step="0.01" style="width:80px"></span>
+        <span><label>臂 Y</label><br><input type="number" id="calibArmY" value="0" step="0.01" style="width:80px"></span>
+        <button class="btn btn-primary btn-sm" id="btnCalibPoint">记录标定点</button>
+        <button class="btn btn-outline btn-sm" id="btnCalibReset">重置</button>
+        <button class="btn btn-success btn-sm" id="btnCalibCompute" disabled>计算标定</button>
+      </div>
+      <div id="calibInfo" style="margin-top:8px">
+        <table class="calib-table">
+          <thead><tr><th>#</th><th>像素 (u, v)</th><th>臂坐标 (x, y)</th></tr></thead>
+          <tbody id="calibTableBody"></tbody>
+        </table>
+      </div>
+      <div id="calibResult" style="font-size:12px;color:var(--accent2);margin-top:4px"></div>
+    </div>
+
+    <!-- Teach record -->
+    <div class="card">
+      <h3>2. 示教录制</h3>
+      <p style="color:var(--muted);font-size:12px;margin-bottom:10px">
+        IK 坐标单位为<b>米</b>。可先用「IK 移动测试」确认坐标正确，再填入下方。典型范围: X=0.05~0.30, Y=-0.20~0.20
+      </p>
+      <div class="step-row">
+        <div class="num" id="teachStep1Num">1</div>
+        <span style="flex:1">拾取位置</span>
+        <span style="display:flex;align-items:end;gap:4px;font-size:12px">
+          <span><label>X</label><br><input type="number" id="pickArmX" value="0.18" step="0.01" style="width:68px"></span>
+          <span><label>Y</label><br><input type="number" id="pickArmY" value="0.0" step="0.01" style="width:68px"></span>
+        </span>
+        <button class="btn btn-primary btn-sm" id="btnTeachPick">记录拾取点</button>
+      </div>
+      <div id="teachPickInfo" class="teach-point" style="display:none">
+        <div class="label">拾取点</div>
+        <span id="teachPickText"></span>
+      </div>
+      <div class="step-row">
+        <div class="num" id="teachStep2Num">2</div>
+        <span style="flex:1">放置位置</span>
+        <span style="display:flex;align-items:end;gap:4px;font-size:12px">
+          <span><label>X</label><br><input type="number" id="placeArmX" value="0.18" step="0.01" style="width:68px"></span>
+          <span><label>Y</label><br><input type="number" id="placeArmY" value="0.10" step="0.01" style="width:68px"></span>
+        </span>
+        <button class="btn btn-primary btn-sm" id="btnTeachPlace">记录放置点</button>
+      </div>
+      <div id="teachPlaceInfo" class="teach-point" style="display:none">
+        <div class="label">放置点</div>
+        <span id="teachPlaceText"></span>
+      </div>
+      <div id="teachMsg" style="display:none;padding:6px 10px;border-radius:6px;font-size:12px;margin-top:4px"></div>
+      <div class="step-row" style="border-bottom:none">
+        <div class="num" id="teachStep3Num">3</div>
+        <span>任务名称</span>
+        <input type="text" id="teachTaskName" value="pick_blue_block" style="flex:1;min-width:120px">
+        <button class="btn btn-success btn-sm" id="btnTeachSave" disabled>保存任务</button>
+      </div>
+    </div>
+
+    <!-- Arm Quick Actions -->
+    <div class="card">
+      <h3>3. 机械臂操作</h3>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-sm" onclick="armHome()">回零位</button>
+        <button class="btn btn-success btn-sm" onclick="armGrip('open')">张开夹爪</button>
+        <button class="btn btn-danger btn-sm" onclick="armGrip('close')">闭合夹爪</button>
+        <button class="btn btn-outline btn-sm" onclick="armBuzzer()">蜂鸣器</button>
+      </div>
+      <div style="margin-top:8px">
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">IK 移动测试 (米)</div>
+        <div class="btn-row" style="align-items:end">
+          <span><label>X</label><br><input type="number" id="teachArmX" value="0.18" step="0.01" style="width:70px"></span>
+          <span><label>Y</label><br><input type="number" id="teachArmY" value="0.0" step="0.01" style="width:70px"></span>
+          <span><label>Z</label><br><input type="number" id="teachArmZ" value="0.23" step="0.01" style="width:70px"></span>
+          <button class="btn btn-primary btn-sm" onclick="teachArmMove()">移动</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Execute -->
+    <div class="card">
+      <h3>4. 执行任务</h3>
+      <div class="btn-row">
+        <button class="btn btn-outline btn-sm" id="btnLoadTasks">刷新任务列表</button>
+      </div>
+      <div id="taskList"></div>
+      <div id="execProgress" style="display:none;margin-top:10px;padding:12px;border-radius:6px;background:var(--bg);border:1px solid var(--warn)">
+        <div style="display:flex;align-items:center;gap:8px">
+          <div style="width:12px;height:12px;border-radius:50%;background:var(--warn);animation:pulse 1s infinite"></div>
+          <span style="color:var(--warn);font-weight:600;font-size:13px" id="execProgressText">执行中…</span>
+        </div>
+      </div>
+      <div id="execResult" style="display:none;margin-top:10px">
+        <div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--accent2)" id="execResultTitle"></div>
+        <div id="execSteps" style="margin-bottom:8px"></div>
+        <details>
+          <summary style="font-size:12px;color:var(--muted);cursor:pointer">详细日志 (JSON)</summary>
+          <div class="result-json" id="execResultJson" style="margin-top:6px"></div>
+        </details>
+      </div>
+    </div>
+  </div>
+
+  <!-- Pipeline -->
+  <div id="tab-pipeline" style="display:none" class="fade-in">
+    <div class="card">
+      <h3>一键流水线</h3>
+      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">抓拍当前画面 → 图像识别 → 计算臂控坐标（mock 或真实）</p>
+      <button class="btn btn-success" id="btnPipeline">执行</button>
+    </div>
+    <div id="pipelineResult" style="display:none" class="card fade-in">
+      <h3>流水线结果</h3>
+      <img id="pipeImg" style="max-width:100%;border-radius:6px;margin-bottom:8px">
+      <div class="result-json" id="pipeJson"></div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ─── RIGHT PANEL: LOG ──────────────────────────── -->
+<div class="panel">
+  <div class="card" style="margin-bottom:12px">
+    <h3>操作日志</h3>
+    <div class="log" id="logBox"></div>
+  </div>
+  <div class="card">
+    <h3>机械臂控制</h3>
+    <div id="armStatus" style="font-size:13px;color:var(--muted);margin-bottom:10px">待命</div>
+    <div id="armDriverInfo" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
+    <div class="btn-row">
+      <button class="btn btn-primary btn-sm" onclick="armHome()">回零位</button>
+      <button class="btn btn-success btn-sm" onclick="armGrip('open')">张开夹爪</button>
+      <button class="btn btn-danger btn-sm" onclick="armGrip('close')">闭合夹爪</button>
+      <button class="btn btn-outline btn-sm" onclick="armBuzzer()">蜂鸣器</button>
+    </div>
+    <div style="margin-top:10px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">IK 移动 (米)</div>
+      <div class="btn-row" style="align-items:end">
+        <span><label>X</label><br><input type="number" id="armMoveX" value="0.18" step="0.01" style="width:70px"></span>
+        <span><label>Y</label><br><input type="number" id="armMoveY" value="0.0" step="0.01" style="width:70px"></span>
+        <span><label>Z</label><br><input type="number" id="armMoveZ" value="0.23" step="0.01" style="width:70px"></span>
+        <button class="btn btn-primary btn-sm" onclick="armMoveTo()">移动</button>
+      </div>
+    </div>
+    <div style="margin-top:10px">
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">直接舵机 (脉宽 0-1000)</div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;font-size:12px">
+        <span><label>S6 底座</label><br><input type="number" id="sv6" value="500" min="0" max="1000" style="width:100%"></span>
+        <span><label>S5 肩部</label><br><input type="number" id="sv5" value="500" min="0" max="1000" style="width:100%"></span>
+        <span><label>S4 肘部</label><br><input type="number" id="sv4" value="500" min="0" max="1000" style="width:100%"></span>
+        <span><label>S3 腕俯仰</label><br><input type="number" id="sv3" value="500" min="0" max="1000" style="width:100%"></span>
+        <span><label>S2 腕旋转</label><br><input type="number" id="sv2" value="500" min="0" max="1000" style="width:100%"></span>
+        <span><label>S1 夹爪</label><br><input type="number" id="sv1" value="700" min="0" max="1000" style="width:100%"></span>
+      </div>
+      <div class="btn-row" style="margin-top:6px">
+        <input type="number" id="svDur" value="1.0" step="0.1" min="0.1" max="5" style="width:60px">
+        <label>秒</label>
+        <button class="btn btn-outline btn-sm" onclick="armSetServos()">发送</button>
+      </div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+const $ = s => document.querySelector(s);
+const $$ = s => document.querySelectorAll(s);
+
+// ── Log ──
+function log(msg, cls=''){
+  const box = $('#logBox');
+  const t = new Date().toLocaleTimeString('zh-CN',{hour12:false});
+  box.innerHTML += `<span class="${cls}">[${t}] ${msg}</span>\n`;
+  box.scrollTop = box.scrollHeight;
+}
+
+// ── Tabs ──
+const ALL_TABS = ['live','videos','frames','teach','pipeline'];
+$$('.tab').forEach(t => t.addEventListener('click', () => {
+  $$('.tab').forEach(x => x.classList.remove('active'));
+  t.classList.add('active');
+  ALL_TABS.forEach(k => {
+    const el = $(`#tab-${k}`);
+    if(el) el.style.display = t.dataset.tab === k ? '' : 'none';
+  });
+  if(t.dataset.tab==='videos') loadVideos();
+  if(t.dataset.tab==='frames') loadFrameDirs();
+  if(t.dataset.tab==='teach'){ startTeachStream(); loadTasks(); }
+  else stopTeachStream();
+}));
+
+// ── Camera ──
+async function camOpen(){
+  log('正在打开相机…','info');
+  try{
+    const r = await fetch('/api/camera/open',{method:'POST'});
+    const d = await r.json();
+    if(d.ok){
+      log(`相机已打开 [${d.backend}]`,'ok');
+      updateCamUI(true, d.backend);
+      startStream();
+    } else {
+      log('打开失败: '+d.error,'err');
+    }
+  }catch(e){log('请求失败: '+e,'err')}
+}
+async function camClose(){
+  await fetch('/api/camera/close',{method:'POST'});
+  updateCamUI(false,'');
+  stopStream();
+  log('相机已关闭','info');
+}
+function updateCamUI(open, backend){
+  $('#camDot').className = 'dot'+(open?' on':'');
+  $('#camStatus').textContent = open ? `已连接 (${backend})` : '相机未连接';
+  $('#btnCamOpen').disabled = open;
+  $('#btnCamClose').disabled = !open;
+}
+$('#btnCamOpen').onclick = camOpen;
+$('#btnCamClose').onclick = camClose;
+
+// ── Stream ──
+let streamActive = false;
+function startStream(){
+  streamActive = true;
+  const img = $('#streamImg');
+  img.src = '/api/stream?_t=' + Date.now();
+  img.style.display = '';
+  $('#streamPlaceholder').style.display = 'none';
+}
+function stopStream(){
+  streamActive = false;
+  const img = $('#streamImg');
+  img.src = '';
+  img.style.display = 'none';
+  $('#streamPlaceholder').style.display = '';
+}
+
+// ── Snapshot ──
+async function snapshot(infer){
+  log(infer ? '抓拍 + 识别…' : '抓拍…','info');
+  try{
+    const r = await fetch('/api/snapshot?infer='+(infer?1:0));
+    if(!r.ok){log('抓拍失败','err');return}
+    const blob = await r.blob();
+    const url = URL.createObjectURL(blob);
+    $('#snapImg').src = url;
+    $('#snapResult').style.display = '';
+    const detsHeader = r.headers.get('X-Detections');
+    if(detsHeader){
+      const dets = JSON.parse(detsHeader);
+      $('#snapDets').textContent = JSON.stringify(dets, null, 2);
+      log(`识别完成: ${dets.length} 个目标`,'ok');
+      window._lastDets = dets;
+    } else {
+      $('#snapDets').textContent = infer ? '无检测结果' : '(未执行识别)';
+      if(infer) log('识别完成: 0 个目标','ok');
+    }
+  }catch(e){log('错误: '+e,'err')}
+}
+$('#btnSnapshot').onclick = () => snapshot(false);
+$('#btnSnapInfer').onclick = () => snapshot(true);
+
+// ── Record ──
+async function startRecord(){
+  const sec = parseInt($('#recSec').value)||10;
+  log(`开始录制 ${sec}s…`,'info');
+  $('#recBadge').style.display = '';
+  $('#btnRecord').disabled = true;
+  try{
+    const r = await fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seconds:sec})});
+    const d = await r.json();
+    if(d.ok){
+      log(`录制中: ${d.file} (${sec}s)`,'ok');
+      pollRecording();
+    } else {
+      log('录制失败: '+d.error,'err');
+      $('#recBadge').style.display='none';
+      $('#btnRecord').disabled=false;
+    }
+  }catch(e){log('错误: '+e,'err');$('#recBadge').style.display='none';$('#btnRecord').disabled=false}
+}
+async function pollRecording(){
+  const poll = setInterval(async()=>{
+    const r = await fetch('/api/record/status');
+    const d = await r.json();
+    if(!d.recording){
+      clearInterval(poll);
+      $('#recBadge').style.display='none';
+      $('#btnRecord').disabled=false;
+      log('录制完成','ok');
+    }
+  }, 1000);
+}
+$('#btnRecord').onclick = startRecord;
+
+// ── Videos ──
+let _selectedVideo = '';
+async function loadVideos(){
+  const r = await fetch('/api/videos');
+  const d = await r.json();
+  const box = $('#videoList');
+  if(!d.videos.length){box.innerHTML='<div style="color:var(--muted);font-size:13px">暂无视频</div>';return}
+  box.innerHTML = d.videos.map(v =>
+    `<div class="list-item" onclick="selectVideo('${v.name}')">
+      <span>${v.name}</span><span class="meta">${v.size_kb} KB</span>
+    </div>`
+  ).join('');
+}
+function selectVideo(name){
+  _selectedVideo = name;
+  $('#videoPlayer').src = '/api/video/'+name;
+  $('#videoPreview').style.display = '';
+}
+$('#btnExtract').onclick = async () => {
+  if(!_selectedVideo){log('请先选择视频','err');return}
+  const step = parseInt($('#extractStep').value)||1;
+  log(`拆帧: ${_selectedVideo} (step=${step})…`,'info');
+  try{
+    const r = await fetch('/api/extract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({video:_selectedVideo, step})});
+    const d = await r.json();
+    if(d.ok){log(`拆帧完成: ${d.count} 帧 → ${d.dir}`,'ok')}
+    else{log('拆帧失败: '+d.error,'err')}
+  }catch(e){log('错误: '+e,'err')}
+};
+
+// ── Frames ──
+let _selectedFrameDir = '';
+async function loadFrameDirs(){
+  const r = await fetch('/api/frames');
+  const d = await r.json();
+  const box = $('#frameDirList');
+  if(!d.dirs.length){box.innerHTML='<div style="color:var(--muted);font-size:13px">暂无帧目录</div>';return}
+  box.innerHTML = d.dirs.map(v =>
+    `<div class="list-item" onclick="selectFrameDir('${v.name}')">
+      <span>${v.name}</span><span class="meta">${v.count} 帧</span>
+    </div>`
+  ).join('');
+}
+async function selectFrameDir(name){
+  _selectedFrameDir = name;
+  $('#frameDirTitle').textContent = name;
+  const r = await fetch('/api/frames/'+name);
+  const d = await r.json();
+  const grid = $('#frameGrid');
+  grid.innerHTML = d.files.map(f =>
+    `<img src="/api/frame/${name}/${f}" data-file="${f}" onclick="selectFrame(this,'${name}','${f}')" loading="lazy">`
+  ).join('');
+  $('#frameDetail').style.display='';
+  $('#inferResult').style.display='none';
+}
+function selectFrame(el, dir, file){
+  $$('.thumb-grid img').forEach(i=>i.classList.remove('active'));
+  el.classList.add('active');
+  showAnnotated(dir, file);
+}
+async function showAnnotated(dir, file){
+  log(`识别: ${dir}/${file}`,'info');
+  $('#inferImg').src = `/api/infer/annotated/${dir}/${file}`;
+  try{
+    const r = await fetch('/api/infer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file:`${dir}/${file}`})});
+    const d = await r.json();
+    if(d.ok){
+      const allDets = d.results.flatMap(r=>r.detections);
+      $('#inferJson').textContent = JSON.stringify(d, null, 2);
+      log(`识别: ${allDets.length} 个目标`,'ok');
+      window._lastDets = allDets;
+    }
+  }catch(e){log('错误: '+e,'err')}
+  $('#inferResult').style.display='';
+}
+$('#btnInferDir').onclick = async () => {
+  if(!_selectedFrameDir) return;
+  log(`批量识别: ${_selectedFrameDir}…`,'info');
+  try{
+    const r = await fetch('/api/infer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dir:_selectedFrameDir})});
+    const d = await r.json();
+    if(d.ok){
+      $('#inferJson').textContent = JSON.stringify(d, null, 2);
+      log(`批量识别完成: ${d.total_detections} 个目标`,'ok');
+      window._lastDets = d.results.flatMap(r=>r.detections);
+    } else {log(d.error,'err')}
+    $('#inferResult').style.display='';
+  }catch(e){log('错误: '+e,'err')}
+};
+
+// ── Arm ──
+$('#btnArmFromInfer').onclick = async () => {
+  const dets = window._lastDets;
+  if(!dets||!dets.length){log('无检测结果可发送','err');return}
+  log('发送到机械臂…','info');
+  try{
+    const r = await fetch('/api/arm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({detections:dets})});
+    const d = await r.json();
+    if(d.ok){
+      const ws = d.workspace||{};
+      const txt = `[${d.arm_mode}] → (${ws.x}, ${ws.y})`;
+      $('#armStatus').innerHTML = `<span style="color:var(--accent2)">${txt}</span>`;
+      log('臂控: '+txt,'ok');
+    } else {log(d.error||'臂控失败','err')}
+  }catch(e){log('错误: '+e,'err')}
+};
+
+// ── Pipeline ──
+$('#btnPipeline').onclick = async () => {
+  log('执行流水线…','info');
+  try{
+    const r = await fetch('/api/pipeline',{method:'POST'});
+    const d = await r.json();
+    if(d.ok){
+      if(d.image) $('#pipeImg').src = d.image;
+      $('#pipeJson').textContent = JSON.stringify({detections:d.detections, arm:d.arm}, null, 2);
+      log(`流水线完成: ${(d.detections||[]).length} 目标, 臂控=${d.arm?.status}`,'ok');
+      if(d.arm?.workspace){
+        const ws=d.arm.workspace;
+        $('#armStatus').innerHTML = `<span style="color:var(--accent2)">[${d.arm.arm_mode}] → (${ws.x}, ${ws.y})</span>`;
+      }
+    } else {log(d.error||'流水线失败','err')}
+    $('#pipelineResult').style.display='';
+  }catch(e){log('错误: '+e,'err')}
+};
+
+// ── Teach Stream ──
+let teachStreamActive = false;
+function startTeachStream(){
+  if(!teachStreamActive && camera_open){
+    teachStreamActive = true;
+    const img = $('#teachStream');
+    img.src = '/api/stream/detect?' + Date.now();
+    img.style.display = '';
+    $('#teachPlaceholder').style.display = 'none';
+  }
+}
+function stopTeachStream(){
+  if(teachStreamActive){
+    teachStreamActive = false;
+    const img = $('#teachStream');
+    img.src = '';
+    img.style.display = 'none';
+    $('#teachPlaceholder').style.display = '';
+  }
+}
+let camera_open = false;
+const _origUpdateCamUI = updateCamUI;
+updateCamUI = function(open, backend){
+  camera_open = open;
+  _origUpdateCamUI(open, backend);
+};
+
+// ── Calibration ──
+let calibPoints = [];
+function renderCalibTable(){
+  const tb = $('#calibTableBody');
+  tb.innerHTML = calibPoints.map((p,i)=>
+    `<tr><td>${i+1}</td><td>(${p.pixel[0]}, ${p.pixel[1]})</td><td>(${p.arm[0]}, ${p.arm[1]})</td></tr>`
+  ).join('');
+  $('#btnCalibCompute').disabled = calibPoints.length < 4;
+}
+$('#btnCalibPoint').onclick = async () => {
+  const ax = parseFloat($('#calibArmX').value);
+  const ay = parseFloat($('#calibArmY').value);
+  if(isNaN(ax)||isNaN(ay)){log('请输入有效的臂坐标','err');return}
+  log(`记录标定点: 臂(${ax}, ${ay})…`,'info');
+  try{
+    const r = await fetch('/api/calibrate/point',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({arm_x:ax,arm_y:ay})});
+    const d = await r.json();
+    if(d.ok){
+      calibPoints.push(d.point);
+      renderCalibTable();
+      log(`标定点 #${d.total}: 像素(${d.point.pixel}) → 臂(${d.point.arm})`,'ok');
+    } else {log(d.error,'err')}
+  }catch(e){log('错误: '+e,'err')}
+};
+$('#btnCalibReset').onclick = async () => {
+  await fetch('/api/calibrate/reset',{method:'POST'});
+  calibPoints = [];
+  renderCalibTable();
+  $('#calibResult').textContent = '';
+  log('标定点已重置','info');
+};
+$('#btnCalibCompute').onclick = async () => {
+  log('计算 Homography…','info');
+  try{
+    const r = await fetch('/api/calibrate/compute',{method:'POST'});
+    const d = await r.json();
+    if(d.ok){
+      $('#calibResult').textContent = '标定完成 (Homography 已保存)';
+      log('标定完成','ok');
+    } else {log(d.error,'err')}
+  }catch(e){log('错误: '+e,'err')}
+};
+
+// ── Teach Record ──
+let teachHasPick = false, teachHasPlace = false;
+function teachMsg(text, type){
+  const el = $('#teachMsg');
+  el.textContent = text;
+  el.style.display = text ? '' : 'none';
+  el.style.background = type === 'err' ? 'var(--danger)' : type === 'warn' ? 'var(--warn)' : 'var(--accent2)';
+  el.style.color = type === 'warn' ? '#333' : '#fff';
+  if(text && type !== 'err') setTimeout(() => { if(el.textContent === text) el.style.display = 'none'; }, 8000);
+}
+function updateTeachSteps(){
+  const s1 = $('#teachStep1Num'), s2 = $('#teachStep2Num'), s3 = $('#teachStep3Num');
+  s1.className = 'num ' + (teachHasPick ? 'done' : 'active');
+  s2.className = 'num ' + (teachHasPlace ? 'done' : (teachHasPick ? 'active' : 'todo'));
+  s3.className = 'num ' + ((teachHasPick&&teachHasPlace) ? 'active' : 'todo');
+  $('#btnTeachSave').disabled = !(teachHasPick && teachHasPlace);
+}
+$('#btnTeachPick').onclick = async () => {
+  const ax = parseFloat($('#pickArmX').value);
+  const ay = parseFloat($('#pickArmY').value);
+  const body = {};
+  if(!isNaN(ax) && !isNaN(ay)) { body.arm_x = ax; body.arm_y = ay; }
+  log(`记录拾取点 (IK: ${ax}, ${ay})…`,'info');
+  teachMsg('');
+  try{
+    const r = await fetch('/api/teach/pick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d = await r.json();
+    if(d.ok){
+      const p = d.pick;
+      let txt = '';
+      if(p.pixel) txt += `像素(${p.pixel[0]}, ${p.pixel[1]}) `;
+      if(p.arm) txt += `IK(${p.arm[0]}, ${p.arm[1]})m`;
+      else txt += '⚠️ 无IK坐标';
+      if(p.depth_mm) txt += ` 深度=${p.depth_mm}mm`;
+      $('#teachPickText').textContent = txt;
+      $('#teachPickInfo').style.display = '';
+      teachHasPick = true;
+      updateTeachSteps();
+      log('拾取点: ' + txt,'ok');
+      if(d.warning) teachMsg(d.warning, 'warn');
+      if(!p.arm) teachMsg('拾取点缺少 IK 坐标，请手动填写 X/Y (米) 后重新记录', 'warn');
+    } else { teachMsg(d.error, 'err'); log(d.error,'err'); }
+  }catch(e){ teachMsg('请求失败: '+e, 'err'); log('错误: '+e,'err'); }
+};
+$('#btnTeachPlace').onclick = async () => {
+  const ax = parseFloat($('#placeArmX').value);
+  const ay = parseFloat($('#placeArmY').value);
+  const body = {};
+  if(!isNaN(ax) && !isNaN(ay)) { body.arm_x = ax; body.arm_y = ay; }
+  log(`记录放置点 (IK: ${ax}, ${ay})…`,'info');
+  teachMsg('');
+  try{
+    const r = await fetch('/api/teach/place',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
+    const d = await r.json();
+    if(d.ok){
+      const p = d.place;
+      let txt = '';
+      if(p.pixel) txt += `像素(${p.pixel[0]}, ${p.pixel[1]}) `;
+      if(p.arm) txt += `IK(${p.arm[0]}, ${p.arm[1]})m`;
+      else txt += '⚠️ 无IK坐标';
+      if(p.depth_mm) txt += ` 深度=${p.depth_mm}mm`;
+      $('#teachPlaceText').textContent = txt;
+      $('#teachPlaceInfo').style.display = '';
+      teachHasPlace = true;
+      updateTeachSteps();
+      log('放置点: ' + txt,'ok');
+      if(d.warning) teachMsg(d.warning, 'warn');
+      if(!p.arm) teachMsg('放置点缺少 IK 坐标，请手动填写 X/Y (米) 后重新记录', 'warn');
+    } else { teachMsg(d.error, 'err'); log(d.error,'err'); }
+  }catch(e){ teachMsg('请求失败: '+e, 'err'); log('错误: '+e,'err'); }
+};
+$('#btnTeachSave').onclick = async () => {
+  const name = $('#teachTaskName').value.trim() || 'pick_blue_block';
+  log(`保存任务: ${name}…`,'info');
+  teachMsg('');
+  $('#btnTeachSave').disabled = true;
+  try{
+    const r = await fetch('/api/teach/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
+    const d = await r.json();
+    if(d.ok){
+      teachMsg(`✅ 任务「${name}」已保存`, 'ok');
+      log(`任务已保存: ${d.task._file}`,'ok');
+      teachHasPick = teachHasPlace = false;
+      updateTeachSteps();
+      $('#teachPickInfo').style.display = 'none';
+      $('#teachPlaceInfo').style.display = 'none';
+      loadTasks();
+    } else {
+      teachMsg(d.error, 'err');
+      log('保存失败: ' + d.error,'err');
+      $('#btnTeachSave').disabled = false;
+    }
+  }catch(e){
+    teachMsg('请求失败: '+e, 'err');
+    log('错误: '+e,'err');
+    $('#btnTeachSave').disabled = false;
+  }
+};
+updateTeachSteps();
+
+// ── Teach Arm Move ──
+async function teachArmMove(){
+  const x=parseFloat($('#teachArmX').value), y=parseFloat($('#teachArmY').value), z=parseFloat($('#teachArmZ').value);
+  if(isNaN(x)||isNaN(y)||isNaN(z)){log('请输入有效的 XYZ 坐标','err');return}
+  log(`IK 移动: (${x}, ${y}, ${z})…`,'info');
+  $('#armStatus').innerHTML = '<span style="color:var(--warn)">移动中…</span>';
+  try{
+    const r = await fetch('/api/arm/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x,y,z})});
+    const d = await r.json();
+    if(d.ok){log(`移动完成: (${x}, ${y}, ${z})`,'ok');$('#armStatus').innerHTML=`<span style="color:var(--accent2)">位置 (${x}, ${y}, ${z})</span>`}
+    else{log('移动失败: '+d.error,'err');$('#armStatus').innerHTML='<span style="color:var(--danger)">IK 失败</span>'}
+  }catch(e){log('错误: '+e,'err')}
+}
+
+// ── Tasks ──
+$('#btnLoadTasks').onclick = loadTasks;
+let _execBusy = false;
+async function loadTasks(){
+  try{
+    const r = await fetch('/api/tasks');
+    const d = await r.json();
+    const box = $('#taskList');
+    if(!d.tasks||!d.tasks.length){box.innerHTML='<div style="color:var(--muted);font-size:13px">暂无已保存任务</div>';return}
+    box.innerHTML = d.tasks.map(t =>
+      `<div class="list-item">
+        <span>
+          <b>${t.name}</b>
+          <span class="meta" style="margin-left:6px">${t.created||''}</span>
+        </span>
+        <div style="display:flex;gap:4px">
+          <button class="btn btn-success btn-sm" onclick="executeTask('${t._file}','${t.name}')">执行</button>
+        </div>
+      </div>`
+    ).join('');
+  }catch(e){log('错误: '+e,'err')}
+}
+
+function _formatAction(a){
+  const name = a.action||'';
+  if(name==='home') return '🏠 回零';
+  if(name==='grip_open') return '✋ 张开夹爪';
+  if(name==='grip_close') return '✊ 闭合夹爪';
+  if(name==='move_to') return `📍 移动 (${a.x??''}, ${a.y??''}, ${a.z??''})`;
+  if(name==='move_to_done') return `✅ 到达`;
+  return name;
+}
+
+async function executeTask(file, name){
+  if(_execBusy){log('已有任务在执行中','err');return}
+  _execBusy = true;
+
+  log(`执行任务: ${name||file}…`,'info');
+  $('#armStatus').innerHTML = '<span style="color:var(--warn)">执行中…</span>';
+  $('#execProgress').style.display = '';
+  $('#execProgressText').textContent = `正在执行「${name||file}」…`;
+  $('#execResult').style.display = 'none';
+
+  $$('#taskList .btn').forEach(b => b.disabled = true);
+
+  try{
+    const r = await fetch('/api/execute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task:file})});
+    const d = await r.json();
+    $('#execProgress').style.display = 'none';
+
+    if(d.ok){
+      const actions = (d.action_log||[]).filter(a => !a.action.endsWith('_done'));
+      const stepsHtml = actions.map((a,i) =>
+        `<div class="step-row" style="border-bottom:${i<actions.length-1?'1px solid var(--border)':'none'}">
+          <div class="num done">${i+1}</div>
+          <span>${_formatAction(a)}</span>
+        </div>`
+      ).join('');
+
+      $('#execResultTitle').textContent = `✅ 任务「${name||file}」执行完成` + (d.used_live_detect?' (实时检测拾取点)':' (示教坐标)');
+      $('#execSteps').innerHTML = stepsHtml;
+      $('#execResultJson').textContent = JSON.stringify(d.action_log, null, 2);
+      $('#execResult').style.display = '';
+      log(`执行完成: ${actions.length} 步`,'ok');
+      $('#armStatus').innerHTML = `<span style="color:var(--accent2)">任务完成</span>`;
+    } else {
+      log('执行失败: '+d.error,'err');
+      $('#armStatus').innerHTML = '<span style="color:var(--danger)">执行失败</span>';
+      $('#execResultTitle').textContent = '❌ 执行失败';
+      $('#execSteps').innerHTML = `<div style="color:var(--danger);font-size:13px;padding:8px 0">${d.error}</div>`;
+      $('#execResultJson').textContent = '';
+      $('#execResult').style.display = '';
+    }
+  }catch(e){
+    $('#execProgress').style.display = 'none';
+    log('错误: '+e,'err');
+    $('#armStatus').innerHTML='<span style="color:var(--danger)">错误</span>';
+  } finally {
+    _execBusy = false;
+    $$('#taskList .btn').forEach(b => b.disabled = false);
+  }
+}
+
+// ── Arm Control ──
+async function armHome(){
+  log('机械臂回零位…','info');
+  $('#armStatus').innerHTML = '<span style="color:var(--warn)">回零中…</span>';
+  try{
+    const r = await fetch('/api/arm/home',{method:'POST'});
+    const d = await r.json();
+    if(d.ok){log('回零完成','ok');$('#armStatus').innerHTML='<span style="color:var(--accent2)">零位</span>'}
+    else{log('回零失败: '+d.error,'err');$('#armStatus').innerHTML='<span style="color:var(--danger)">失败</span>'}
+  }catch(e){log('错误: '+e,'err')}
+}
+async function armGrip(action){
+  log(`夹爪${action==='open'?'张开':'闭合'}…`,'info');
+  try{
+    const r = await fetch('/api/arm/grip',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});
+    const d = await r.json();
+    if(d.ok){log(`夹爪${action==='open'?'已张开':'已闭合'}`,'ok')}
+    else{log(d.error,'err')}
+  }catch(e){log('错误: '+e,'err')}
+}
+async function armBuzzer(){
+  try{await fetch('/api/arm/buzzer',{method:'POST'});log('蜂鸣器','ok')}catch(e){log('错误: '+e,'err')}
+}
+async function armMoveTo(){
+  const x=parseFloat($('#armMoveX').value), y=parseFloat($('#armMoveY').value), z=parseFloat($('#armMoveZ').value);
+  if(isNaN(x)||isNaN(y)||isNaN(z)){log('请输入有效的 XYZ 坐标','err');return}
+  log(`IK 移动: (${x}, ${y}, ${z})…`,'info');
+  $('#armStatus').innerHTML = '<span style="color:var(--warn)">移动中…</span>';
+  try{
+    const r = await fetch('/api/arm/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x,y,z})});
+    const d = await r.json();
+    if(d.ok){log(`移动完成: (${x}, ${y}, ${z})`,'ok');$('#armStatus').innerHTML=`<span style="color:var(--accent2)">位置 (${x}, ${y}, ${z})</span>`}
+    else{log('移动失败: '+d.error,'err');$('#armStatus').innerHTML='<span style="color:var(--danger)">IK 失败</span>'}
+  }catch(e){log('错误: '+e,'err')}
+}
+async function armSetServos(){
+  const positions = {};
+  for(let i=1;i<=6;i++){
+    const v = parseInt($('#sv'+i).value);
+    if(!isNaN(v)) positions[i] = v;
+  }
+  const dur = parseFloat($('#svDur').value)||1.0;
+  log(`直接舵机: ${JSON.stringify(positions)} (${dur}s)`,'info');
+  try{
+    const r = await fetch('/api/arm/servos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({positions,duration:dur})});
+    const d = await r.json();
+    if(d.ok){log('舵机指令已发送','ok')}
+    else{log(d.error,'err')}
+  }catch(e){log('错误: '+e,'err')}
+}
+
+// ── Init ──
+(async()=>{
+  const r = await fetch('/api/camera/status');
+  const d = await r.json();
+  if(d.open){updateCamUI(true,d.backend);startStream()}
+  try{
+    const ar = await fetch('/api/arm/status');
+    const ad = await ar.json();
+    if(ad.ok){
+      const mode = ad.driver || 'mock';
+      $('#armDriverInfo').textContent = `驱动: ${mode}`;
+      log(`机械臂驱动: ${mode}`,'info');
+    }
+  }catch(e){}
+  log('控制台已就绪','ok');
+})();
+</script>
+</body>
+</html>

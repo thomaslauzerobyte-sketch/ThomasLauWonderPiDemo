@@ -1,0 +1,67 @@
+paths:
+  videos_dir: data/videos
+  frames_dir: data/frames
+  model_path: models/model.onnx
+  class_names: config/class_names.example.txt
+
+camera:
+  # auto | ros_web | opencv | rpicam | picamera2 | deptrum
+  # ros_web: 从 Docker 容器内的 ROS2 web_video_server 读取画面（推荐，
+  #          当 Docker 已占用深度相机时自动使用此模式）
+  # auto：依次尝试 ros_web → opencv → deptrum → picamera2
+  backend: auto
+  index: 0
+  width: 640
+  height: 480
+  fps: 12
+  # ROS2 web_video_server 地址（Docker host 网络模式，端口 8080）
+  ros_web_video_url: "http://localhost:8080"
+  # Deptrum 专用: 分辨率模式索引
+  resolution_mode_index: 2
+
+recording:
+  default_duration_sec: 30
+  # OpenCV fourcc: mp4v / MJPG / XVID（依平台与编码器而定）
+  fourcc: mp4v
+  filename_prefix: capture
+
+extract:
+  image_format: jpg
+  jpeg_quality: 92
+  # 每隔 step 帧保存一张，1 表示全保存
+  frame_step: 1
+  subdir_prefix: run
+
+inference:
+  # haar：内置人脸检测演示；onnx：需 models/model.onnx 与 onnxruntime
+  method: haar
+  onnx_input_size: [224, 224]
+  normalize: true
+
+blue_detect:
+  hsv_lower: [100, 80, 50]
+  hsv_upper: [130, 255, 255]
+  min_area: 500
+  blur_kernel: 5
+
+teach:
+  pick_z: -0.02
+  move_z: 0.05
+
+arm:
+  # driver: mock | hiwonder
+  # mock: 仅打印日志，不控制硬件
+  # hiwonder: 通过 docker exec 调用 ROS2 控制 ArmPi Ultra
+  driver: hiwonder
+  mock: false
+
+  # HiWonder ArmPi Ultra 配置
+  docker_container: ArmPiUltra
+  ik_pitch: -90.0
+  grip_open_pulse: 100
+  grip_close_pulse: 700
+  move_duration: 0.8
+  step_delay_sec: 0.5
+
+  image_width: 640
+  image_height: 480
