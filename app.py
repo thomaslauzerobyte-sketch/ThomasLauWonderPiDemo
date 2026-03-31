@@ -4,6 +4,9 @@
 from __future__ import annotations
 
 import json
+import re
+import shutil
+import subprocess
 import sys
 import threading
 import time
@@ -34,6 +37,67 @@ def _cfg() -> dict[str, Any]:
 
 # ── Camera Singleton ──────────────────────────────────────────────
 import urllib.request
+from urllib.parse import quote, unquote
+
+
+def _http_get_bytes(url: str, timeout_sec: float) -> bytes | None:
+    """HTTP GET with hard wall-clock limit (ROS snapshot can hang without this)."""
+    timeout_sec = max(1.0, float(timeout_sec))
+    curl = shutil.which("curl")
+    if curl:
+        try:
+            r = subprocess.run(
+                [
+                    curl,
+                    "-sS",
+                    "--connect-timeout",
+                    "2",
+                    "--max-time",
+                    str(int(timeout_sec + 0.99)),
+                    "-o",
+                    "-",
+                    url,
+                ],
+                capture_output=True,
+                timeout=timeout_sec + 1.5,
+            )
+            if r.returncode == 0 and len(r.stdout) > 100:
+                return r.stdout
+        except (subprocess.TimeoutExpired, OSError, FileNotFoundError):
+            pass
+    import socket
+
+    old = socket.getdefaulttimeout()
+    try:
+        socket.setdefaulttimeout(timeout_sec)
+        with urllib.request.urlopen(url) as resp:
+            if getattr(resp, "status", 200) != 200:
+                return None
+            return resp.read()
+    except Exception:
+        return None
+    finally:
+        socket.setdefaulttimeout(old)
+
+
+def _ros_discover_snapshot_urls(ros_base: str, timeout_sec: float) -> list[str]:
+    """Parse web_video_server index HTML for /snapshot?topic=... links."""
+    idx_url = ros_base.rstrip("/") + "/"
+    raw = _http_get_bytes(idx_url, min(4.0, float(timeout_sec)))
+    if not raw:
+        return []
+    html = raw.decode("utf-8", errors="ignore")
+    topics = re.findall(r"/snapshot\?topic=([^\"'>\s]+)", html)
+    seen: set[str] = set()
+    out: list[str] = []
+    base = ros_base.rstrip("/")
+    for t in topics:
+        t = unquote(t)
+        if t in seen:
+            continue
+        seen.add(t)
+        out.append(f"{base}/snapshot?topic={quote(t, safe='/')}")
+    return out
 
 
 class CameraManager:
@@ -53,6 +117,7 @@ class CameraManager:
         self._ros_rgb_url: str = ""
         self._ros_depth_url: str = ""
         self._ros_stream_url: str = ""
+        self._ros_http_timeout: float = 5.0
 
     def _open(self, cfg: dict[str, Any]) -> None:
         cam = cfg["camera"]
@@ -61,30 +126,60 @@ class CameraManager:
         ros_base = cam.get("ros_web_video_url", "http://localhost:8080")
 
         if backend in ("ros_web", "auto"):
-            snap_url = f"{ros_base}/snapshot?topic=/depth_cam/rgb/image_raw"
-            try:
-                resp = urllib.request.urlopen(snap_url, timeout=3)
-                if resp.status == 200 and len(resp.read()) > 100:
+            ros_to = float(cam.get("ros_web_timeout_sec", 4.0))
+            base = ros_base.rstrip("/")
+            topics = cam.get("ros_snapshot_topics") or [
+                "/depth_cam/rgb/image_raw",
+                "/calibration/image_result",
+            ]
+            snap_urls: list[str] = []
+            for topic in topics:
+                topic = str(topic).strip()
+                if not topic.startswith("/"):
+                    topic = "/" + topic
+                snap_urls.append(f"{base}/snapshot?topic={quote(topic, safe='/')}")
+            for u in _ros_discover_snapshot_urls(ros_base, ros_to):
+                if u not in snap_urls:
+                    snap_urls.append(u)
+            for snap_url in snap_urls:
+                body = _http_get_bytes(snap_url, ros_to)
+                if body and len(body) > 100:
                     self._ros_rgb_url = snap_url
-                    self._ros_depth_url = f"{ros_base}/snapshot?topic=/depth_cam/depth/image_raw"
-                    self._ros_stream_url = f"{ros_base}/stream?topic=/depth_cam/rgb/image_raw&type=mjpeg&quality=70"
+                    m = re.search(r"[?&]topic=([^&]+)", snap_url)
+                    topic = unquote(m.group(1)) if m else ""
+                    self._ros_depth_url = (
+                        f"{base}/snapshot?topic=/depth_cam/depth/image_raw"
+                        if topic and "depth_cam" in topic
+                        else ""
+                    )
+                    st = topic or "/depth_cam/rgb/image_raw"
+                    self._ros_stream_url = (
+                        f"{base}/stream?topic={quote(st, safe='/')}&type=mjpeg&quality=70"
+                    )
+                    self._ros_http_timeout = ros_to
                     self._backend = "ros_web"
                     self._running = True
                     return
-            except Exception:
-                pass
 
         if backend in ("opencv", "auto"):
-            cap = cv2.VideoCapture(index)
-            if cap.isOpened():
-                cap.set(cv2.CAP_PROP_FRAME_WIDTH, int(cam.get("width", 640)))
-                cap.set(cv2.CAP_PROP_FRAME_HEIGHT, int(cam.get("height", 480)))
-                cap.set(cv2.CAP_PROP_FPS, float(cam.get("fps", 30)))
-                self._cap = cap
-                self._backend = "opencv"
-                self._running = True
-                return
-            cap.release()
+            indices = cam.get("opencv_indices")
+            if not indices:
+                indices = [index]
+            else:
+                indices = [int(x) for x in indices]
+            w, h = int(cam.get("width", 640)), int(cam.get("height", 480))
+            fps = float(cam.get("fps", 30))
+            for idx in indices:
+                cap = cv2.VideoCapture(idx)
+                if cap.isOpened():
+                    cap.set(cv2.CAP_PROP_FRAME_WIDTH, w)
+                    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, h)
+                    cap.set(cv2.CAP_PROP_FPS, fps)
+                    self._cap = cap
+                    self._backend = "opencv"
+                    self._running = True
+                    return
+                cap.release()
 
         if backend in ("deptrum",):
             try:
@@ -116,7 +211,13 @@ class CameraManager:
             except Exception:
                 pass
 
-        raise RuntimeError("无法打开任何相机，请检查 config/default.yaml 与硬件连接。")
+        raise RuntimeError(
+            "无法打开任何相机。"
+            "若相机在 Docker 内：请启动深度相机 ROS 节点（如 aurora930_node），"
+            "使 http://127.0.0.1:8080 上至少一个图像话题有数据；"
+            "或暂时将 camera.backend 改为 opencv 并指定可用的 opencv_indices。"
+            "详见 config/default.yaml 中 camera 段。"
+        )
 
     def ensure_open(self) -> None:
         with self._lock:
@@ -125,9 +226,12 @@ class CameraManager:
             self._open(_cfg())
 
     def _fetch_snapshot(self, url: str) -> np.ndarray | None:
+        if not url:
+            return None
         try:
-            resp = urllib.request.urlopen(url, timeout=5)
-            data = resp.read()
+            data = _http_get_bytes(url, self._ros_http_timeout)
+            if not data or len(data) < 10:
+                return None
             arr = np.frombuffer(data, dtype=np.uint8)
             return cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
         except Exception:
@@ -160,7 +264,11 @@ class CameraManager:
                 bgr = self._fetch_snapshot(self._ros_rgb_url)
                 if bgr is None:
                     return False, None, None
-                depth_img = self._fetch_snapshot(self._ros_depth_url)
+                depth_img = (
+                    self._fetch_snapshot(self._ros_depth_url)
+                    if self._ros_depth_url
+                    else None
+                )
                 depth_16 = None
                 if depth_img is not None:
                     if depth_img.ndim == 3:
@@ -215,6 +323,7 @@ class CameraManager:
 
 
 camera = CameraManager()
+_BRIDGE_URL = "http://localhost:9091"
 
 
 # ── Inference helpers (reuse scripts/infer.py logic) ──────────────
@@ -659,6 +768,17 @@ def api_arm_status():
     arm_cfg = cfg.get("arm", {})
     driver_type = arm_cfg.get("driver", "mock")
     return jsonify(ok=True, driver=driver_type, mock=arm_cfg.get("mock", True))
+
+
+@app.route("/api/arm/state")
+def api_arm_state():
+    """Fetch live arm joint state from arm_bridge for 3D preview."""
+    try:
+        with urllib.request.urlopen(f"{_BRIDGE_URL}/state", timeout=2.0) as r:
+            data = json.loads(r.read().decode("utf-8"))
+        return jsonify(data)
+    except Exception as e:
+        return jsonify(ok=False, error=f"arm_bridge state unavailable: {e}"), 503
 
 
 @app.route("/api/arm/home", methods=["POST"])

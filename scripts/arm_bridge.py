@@ -47,18 +47,25 @@ class ArmBridgeNode(Node):
             SetRobotPose, "/kinematics/set_pose_target"
         )
         self._ik_lock = threading.Lock()
+        self._state_lock = threading.Lock()
+        self._last_servo_pulse: dict[int, int] = {1: 700, 2: 500, 3: 500, 4: 500, 5: 500, 6: 500}
         self.get_logger().info("arm_bridge node ready")
 
     def pub_servos(self, positions: dict, duration: float) -> None:
         msg = ServosPosition()
         msg.duration = float(duration)
         msg.position_unit = "pulse"
+        updated: dict[int, int] = {}
         for sid, pos in positions.items():
             sp = ServoPosition()
             sp.id = int(sid)
             sp.position = float(pos)
             msg.position.append(sp)
+            updated[int(sid)] = int(pos)
         self.servo_pub.publish(msg)
+        if updated:
+            with self._state_lock:
+                self._last_servo_pulse.update(updated)
 
     def pub_buzzer(self, freq: int, on_time: float) -> None:
         msg = BuzzerState()
@@ -102,6 +109,27 @@ class ArmBridgeNode(Node):
 
             return list(result.pulse), None
 
+    def get_state(self) -> dict:
+        with self._state_lock:
+            p = dict(self._last_servo_pulse)
+
+        # ArmPi pulse (0~1000) to approx angle deg (-90~90).
+        def pulse_to_deg(v: int) -> float:
+            return (float(v) - 500.0) * 0.18
+
+        return {
+            "ok": True,
+            "servo_pulse": p,
+            "joint_deg": {
+                "base": round(pulse_to_deg(p.get(6, 500)), 2),
+                "shoulder": round(pulse_to_deg(p.get(5, 500)), 2),
+                "elbow": round(pulse_to_deg(p.get(4, 500)), 2),
+                "wrist": round(pulse_to_deg(p.get(3, 500)), 2),
+                "wrist_rot": round(pulse_to_deg(p.get(2, 500)), 2),
+            },
+            "gripper": {"pulse": int(p.get(1, 700)), "open": int(p.get(1, 700)) <= 400},
+        }
+
 
 _node: ArmBridgeNode | None = None
 
@@ -125,6 +153,8 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/health":
             self._json({"ok": True, "uptime": time.monotonic()})
+        elif self.path == "/state":
+            self._json(_node.get_state())
         else:
             self._json({"error": "not found"}, 404)
 

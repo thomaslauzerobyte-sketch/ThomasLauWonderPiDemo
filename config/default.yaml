@@ -16,6 +16,16 @@ camera:
   fps: 12
   # ROS2 web_video_server 地址（Docker host 网络模式，端口 8080）
   ros_web_video_url: "http://localhost:8080"
+  # 打开相机时依次尝试这些图像话题（深度 RGB 未出图时会卡住，故放多个备选）
+  ros_snapshot_topics:
+    - /depth_cam/rgb/image_raw
+    - /calibration/image_result
+    - /object_tracking/image_result
+    - /lab_config_manager/image_result
+  # 单次快照最大等待秒数（避免 web_video_server 在无帧时无限阻塞）
+  ros_web_timeout_sec: 4
+  # OpenCV 回退时依次尝试的设备索引（树莓派上 USB 相机常在 0 或 2）
+  opencv_indices: [0, 1, 2, 3, 4, 5]
   # Deptrum 专用: 分辨率模式索引
   resolution_mode_index: 2
 
@@ -75,6 +85,8 @@ arm:
   grip_close_pulse: 700
   move_duration: 0.8
   step_delay_sec: 0.5
+  # 需要翻转方向的舵机编号列表（pulse → 1000 - pulse）
+  servo_invert: [5]
 
   image_width: 640
   image_height: 480

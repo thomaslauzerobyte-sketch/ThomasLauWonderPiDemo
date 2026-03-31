@@ -143,11 +143,22 @@ class HiWonderArmDriver:
     grip_close_pulse: int = 100
     duration: float = 1.0
     ik_timeout: int = 15
+    servo_invert: list[int] = field(default_factory=list)
     action_log: list[dict[str, Any]] = field(default_factory=list)
     _use_bridge: bool = field(default=False, init=False, repr=False)
 
     def __post_init__(self):
         self._use_bridge = _ensure_bridge(self.container)
+
+    def _apply_invert(self, positions: dict[int, int]) -> dict[int, int]:
+        """Flip pulse values (1000 - p) for servos listed in servo_invert."""
+        if not self.servo_invert:
+            return positions
+        out = dict(positions)
+        for sid in self.servo_invert:
+            if sid in out:
+                out[sid] = 1000 - out[sid]
+        return out
 
     def _log(self, action: str, **kw: Any) -> None:
         entry = {"action": action, "t": time.time(), **kw}
@@ -201,34 +212,55 @@ class HiWonderArmDriver:
     # ── bridge-aware commands ─────────────────────────────────────
     def _pub_servos(self, positions: dict[int, int], duration: float | None = None) -> None:
         dur = duration if duration is not None else self.duration
+        pos = self._apply_invert(positions)
         if self._use_bridge:
             r = _bridge_post("/servo", {
-                "positions": {str(k): v for k, v in positions.items()},
+                "positions": {str(k): v for k, v in pos.items()},
                 "duration": dur,
             })
             if r and r.get("ok"):
                 return
             self._use_bridge = False
             print("[arm] bridge servo failed, falling back to docker exec")
-        self._pub_servos_cli(positions, dur)
+        self._pub_servos_cli(pos, dur)
 
     def move_to(self, x: float, y: float, z: float) -> None:
         self._log("move_to", x=round(x, 4), y=round(y, 4), z=round(z, 4))
 
         if self._use_bridge:
-            r = _bridge_post("/ik_move", {
-                "x": x, "y": y, "z": z,
-                "pitch": self.pitch,
-                "pitch_range": list(self.pitch_range),
-                "duration": self.duration,
-            })
-            if r and r.get("ok"):
-                self._log("move_to_done", pulses=r.get("pulses"))
-                return
-            if r and not r.get("ok"):
-                err = r.get("error", "unknown")
-                self._log("bridge_ik_failed", error=err)
-                raise RuntimeError(f"IK 求解失败: ({x}, {y}, {z}) - {err}")
+            if self.servo_invert:
+                r = _bridge_post("/ik", {
+                    "x": x, "y": y, "z": z,
+                    "pitch": self.pitch,
+                    "pitch_range": list(self.pitch_range),
+                    "duration": self.duration,
+                })
+                if r and r.get("ok"):
+                    pulses = r.get("pulses", [])
+                    servos = {6: pulses[0], 5: pulses[1], 4: pulses[2], 3: pulses[3]}
+                    if len(pulses) >= 5:
+                        servos[2] = pulses[4]
+                    self._pub_servos(servos, self.duration)
+                    self._log("move_to_done", pulses=pulses)
+                    return
+                if r and not r.get("ok"):
+                    err = r.get("error", "unknown")
+                    self._log("bridge_ik_failed", error=err)
+                    raise RuntimeError(f"IK 求解失败: ({x}, {y}, {z}) - {err}")
+            else:
+                r = _bridge_post("/ik_move", {
+                    "x": x, "y": y, "z": z,
+                    "pitch": self.pitch,
+                    "pitch_range": list(self.pitch_range),
+                    "duration": self.duration,
+                })
+                if r and r.get("ok"):
+                    self._log("move_to_done", pulses=r.get("pulses"))
+                    return
+                if r and not r.get("ok"):
+                    err = r.get("error", "unknown")
+                    self._log("bridge_ik_failed", error=err)
+                    raise RuntimeError(f"IK 求解失败: ({x}, {y}, {z}) - {err}")
             self._use_bridge = False
             print("[arm] bridge ik_move failed, falling back to docker exec")
 
@@ -242,6 +274,7 @@ class HiWonderArmDriver:
         servos = {6: pulses[0], 5: pulses[1], 4: pulses[2], 3: pulses[3]}
         if len(pulses) >= 5:
             servos[2] = pulses[4]
+        servos = self._apply_invert(servos)
         self._pub_servos_cli(servos, self.duration)
         self._log("move_to_done", pulses=pulses)
 
@@ -291,6 +324,7 @@ def make_driver(arm_cfg: dict[str, Any]) -> ArmDriver:
             grip_open_pulse=int(arm_cfg.get("grip_open_pulse", 700)),
             grip_close_pulse=int(arm_cfg.get("grip_close_pulse", 100)),
             duration=float(arm_cfg.get("move_duration", 1.5)),
+            servo_invert=list(arm_cfg.get("servo_invert", [])),
         )
 
     if mode == "mock" or arm_cfg.get("mock", True):
