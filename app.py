@@ -848,8 +848,8 @@ _teach_state: dict[str, Any] = {}
 def _validate_ik_coords(x: float, y: float) -> str | None:
     """Check if (x, y) are within ArmPi Ultra IK workspace (meters)."""
     if abs(x) > 0.35 or abs(y) > 0.35:
-        return (f"坐标 ({x:.4f}, {y:.4f}) 超出机械臂工作范围。"
-                f"IK 坐标单位为米，典型范围: x=0.05~0.30, y=-0.20~0.20")
+        return (f"坐标 ({x*1000:.0f}, {y*1000:.0f}) mm 超出机械臂工作范围。"
+                f"典型范围: X=50~300, Y=-200~200 mm")
     return None
 
 
@@ -891,11 +891,11 @@ def api_teach_pick():
                 if err is None:
                     arm_pos = [round(ax, 4), round(ay, 4)]
                 else:
-                    warning = f"标定映射坐标超范围({ax:.2f}, {ay:.2f})，请手动填写 IK 坐标(米)"
+                    warning = f"标定映射坐标超范围({ax:.2f}, {ay:.2f})，请手动填写 IK 坐标"
             except Exception:
-                warning = "标定矩阵映射失败，请手动填写 IK 坐标(米)"
+                warning = "标定矩阵映射失败，请手动填写 IK 坐标"
         else:
-            warning = "未完成标定，请手动填写 IK 坐标(米)"
+            warning = "未完成标定，请手动填写 IK 坐标"
 
     if pixel is None and arm_pos is None:
         return jsonify(ok=False, error="未检测到蓝色积木，且未提供手动坐标"), 400
@@ -949,11 +949,11 @@ def api_teach_place():
                 if err is None:
                     arm_pos = [round(ax, 4), round(ay, 4)]
                 else:
-                    warning = f"标定映射坐标超范围({ax:.2f}, {ay:.2f})，请手动填写 IK 坐标(米)"
+                    warning = f"标定映射坐标超范围({ax:.2f}, {ay:.2f})，请手动填写 IK 坐标"
             except Exception:
-                warning = "标定矩阵映射失败，请手动填写 IK 坐标(米)"
+                warning = "标定矩阵映射失败，请手动填写 IK 坐标"
         else:
-            warning = "未完成标定，请手动填写 IK 坐标(米)"
+            warning = "未完成标定，请手动填写 IK 坐标"
 
     if pixel is None and arm_pos is None:
         return jsonify(ok=False, error="未检测到蓝色积木，且未提供手动坐标"), 400
@@ -988,8 +988,8 @@ def api_teach_save():
         missing.append("放置点")
     if missing:
         return jsonify(ok=False, error=f"{'和'.join(missing)}缺少 IK 坐标。"
-                       "标定映射可能失效，请在记录时手动填写 X/Y 坐标（单位: 米，"
-                       "典型范围 X=0.05~0.30, Y=-0.20~0.20）。"), 400
+                       "标定映射可能失效，请在记录时手动填写 X/Y 坐标"
+                       "（典型范围 X=50~300, Y=-200~200 mm）。"), 400
 
     err = _validate_ik_coords(pick_arm[0], pick_arm[1])
     if err:

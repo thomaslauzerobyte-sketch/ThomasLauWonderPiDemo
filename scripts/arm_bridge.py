@@ -193,8 +193,9 @@ def main():
     # Wait for DDS discovery to settle
     time.sleep(1.0)
 
-    server = HTTPServer(("0.0.0.0", 9090), Handler)
-    print("arm_bridge HTTP server listening on :9090", flush=True)
+    port = 9091
+    server = HTTPServer(("0.0.0.0", port), Handler)
+    print(f"arm_bridge HTTP server listening on :{port}", flush=True)
     try:
         server.serve_forever()
     except KeyboardInterrupt:

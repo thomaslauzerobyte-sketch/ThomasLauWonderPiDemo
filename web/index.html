@@ -212,14 +212,14 @@ label{font-size:13px;color:var(--muted)}
     <div class="card">
       <h3>2. 示教录制</h3>
       <p style="color:var(--muted);font-size:12px;margin-bottom:10px">
-        IK 坐标单位为<b>米</b>。可先用「IK 移动测试」确认坐标正确，再填入下方。典型范围: X=0.05~0.30, Y=-0.20~0.20
+        可先用「IK 移动测试」确认坐标正确，再填入下方。典型范围: X=50~300, Y=-200~200 (mm)
       </p>
       <div class="step-row">
         <div class="num" id="teachStep1Num">1</div>
         <span style="flex:1">拾取位置</span>
         <span style="display:flex;align-items:end;gap:4px;font-size:12px">
-          <span><label>X</label><br><input type="number" id="pickArmX" value="0.18" step="0.01" style="width:68px"></span>
-          <span><label>Y</label><br><input type="number" id="pickArmY" value="0.0" step="0.01" style="width:68px"></span>
+          <span><label>X</label><br><input type="number" id="pickArmX" value="180" step="1" style="width:68px"></span>
+          <span><label>Y</label><br><input type="number" id="pickArmY" value="0" step="1" style="width:68px"></span>
         </span>
         <button class="btn btn-primary btn-sm" id="btnTeachPick">记录拾取点</button>
       </div>
@@ -231,8 +231,8 @@ label{font-size:13px;color:var(--muted)}
         <div class="num" id="teachStep2Num">2</div>
         <span style="flex:1">放置位置</span>
         <span style="display:flex;align-items:end;gap:4px;font-size:12px">
-          <span><label>X</label><br><input type="number" id="placeArmX" value="0.18" step="0.01" style="width:68px"></span>
-          <span><label>Y</label><br><input type="number" id="placeArmY" value="0.10" step="0.01" style="width:68px"></span>
+          <span><label>X</label><br><input type="number" id="placeArmX" value="180" step="1" style="width:68px"></span>
+          <span><label>Y</label><br><input type="number" id="placeArmY" value="100" step="1" style="width:68px"></span>
         </span>
         <button class="btn btn-primary btn-sm" id="btnTeachPlace">记录放置点</button>
       </div>
@@ -259,11 +259,11 @@ label{font-size:13px;color:var(--muted)}
         <button class="btn btn-outline btn-sm" onclick="armBuzzer()">蜂鸣器</button>
       </div>
       <div style="margin-top:8px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">IK 移动测试 (米)</div>
+        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">IK 移动测试</div>
         <div class="btn-row" style="align-items:end">
-          <span><label>X</label><br><input type="number" id="teachArmX" value="0.18" step="0.01" style="width:70px"></span>
-          <span><label>Y</label><br><input type="number" id="teachArmY" value="0.0" step="0.01" style="width:70px"></span>
-          <span><label>Z</label><br><input type="number" id="teachArmZ" value="0.23" step="0.01" style="width:70px"></span>
+          <span><label>X</label><br><input type="number" id="teachArmX" value="180" step="1" style="width:70px"></span>
+          <span><label>Y</label><br><input type="number" id="teachArmY" value="0" step="1" style="width:70px"></span>
+          <span><label>Z</label><br><input type="number" id="teachArmZ" value="230" step="1" style="width:70px"></span>
           <button class="btn btn-primary btn-sm" onclick="teachArmMove()">移动</button>
         </div>
       </div>
@@ -326,11 +326,11 @@ label{font-size:13px;color:var(--muted)}
       <button class="btn btn-outline btn-sm" onclick="armBuzzer()">蜂鸣器</button>
     </div>
     <div style="margin-top:10px">
-      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">IK 移动 (米)</div>
+      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">IK 移动</div>
       <div class="btn-row" style="align-items:end">
-        <span><label>X</label><br><input type="number" id="armMoveX" value="0.18" step="0.01" style="width:70px"></span>
-        <span><label>Y</label><br><input type="number" id="armMoveY" value="0.0" step="0.01" style="width:70px"></span>
-        <span><label>Z</label><br><input type="number" id="armMoveZ" value="0.23" step="0.01" style="width:70px"></span>
+        <span><label>X</label><br><input type="number" id="armMoveX" value="180" step="1" style="width:70px"></span>
+        <span><label>Y</label><br><input type="number" id="armMoveY" value="0" step="1" style="width:70px"></span>
+        <span><label>Z</label><br><input type="number" id="armMoveZ" value="230" step="1" style="width:70px"></span>
         <button class="btn btn-primary btn-sm" onclick="armMoveTo()">移动</button>
       </div>
     </div>
@@ -700,11 +700,11 @@ function updateTeachSteps(){
   $('#btnTeachSave').disabled = !(teachHasPick && teachHasPlace);
 }
 $('#btnTeachPick').onclick = async () => {
-  const ax = parseFloat($('#pickArmX').value);
-  const ay = parseFloat($('#pickArmY').value);
+  const ax_mm = parseFloat($('#pickArmX').value);
+  const ay_mm = parseFloat($('#pickArmY').value);
   const body = {};
-  if(!isNaN(ax) && !isNaN(ay)) { body.arm_x = ax; body.arm_y = ay; }
-  log(`记录拾取点 (IK: ${ax}, ${ay})…`,'info');
+  if(!isNaN(ax_mm) && !isNaN(ay_mm)) { body.arm_x = ax_mm / 1000; body.arm_y = ay_mm / 1000; }
+  log(`记录拾取点 (${ax_mm}, ${ay_mm}) mm…`,'info');
   teachMsg('');
   try{
     const r = await fetch('/api/teach/pick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -713,7 +713,7 @@ $('#btnTeachPick').onclick = async () => {
       const p = d.pick;
       let txt = '';
       if(p.pixel) txt += `像素(${p.pixel[0]}, ${p.pixel[1]}) `;
-      if(p.arm) txt += `IK(${p.arm[0]}, ${p.arm[1]})m`;
+      if(p.arm) txt += `IK(${(p.arm[0]*1000).toFixed(0)}, ${(p.arm[1]*1000).toFixed(0)}) mm`;
       else txt += '⚠️ 无IK坐标';
       if(p.depth_mm) txt += ` 深度=${p.depth_mm}mm`;
       $('#teachPickText').textContent = txt;
@@ -722,16 +722,16 @@ $('#btnTeachPick').onclick = async () => {
       updateTeachSteps();
       log('拾取点: ' + txt,'ok');
       if(d.warning) teachMsg(d.warning, 'warn');
-      if(!p.arm) teachMsg('拾取点缺少 IK 坐标，请手动填写 X/Y (米) 后重新记录', 'warn');
+      if(!p.arm) teachMsg('拾取点缺少 IK 坐标，请手动填写 X/Y 后重新记录', 'warn');
     } else { teachMsg(d.error, 'err'); log(d.error,'err'); }
   }catch(e){ teachMsg('请求失败: '+e, 'err'); log('错误: '+e,'err'); }
 };
 $('#btnTeachPlace').onclick = async () => {
-  const ax = parseFloat($('#placeArmX').value);
-  const ay = parseFloat($('#placeArmY').value);
+  const ax_mm = parseFloat($('#placeArmX').value);
+  const ay_mm = parseFloat($('#placeArmY').value);
   const body = {};
-  if(!isNaN(ax) && !isNaN(ay)) { body.arm_x = ax; body.arm_y = ay; }
-  log(`记录放置点 (IK: ${ax}, ${ay})…`,'info');
+  if(!isNaN(ax_mm) && !isNaN(ay_mm)) { body.arm_x = ax_mm / 1000; body.arm_y = ay_mm / 1000; }
+  log(`记录放置点 (${ax_mm}, ${ay_mm}) mm…`,'info');
   teachMsg('');
   try{
     const r = await fetch('/api/teach/place',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
@@ -740,7 +740,7 @@ $('#btnTeachPlace').onclick = async () => {
       const p = d.place;
       let txt = '';
       if(p.pixel) txt += `像素(${p.pixel[0]}, ${p.pixel[1]}) `;
-      if(p.arm) txt += `IK(${p.arm[0]}, ${p.arm[1]})m`;
+      if(p.arm) txt += `IK(${(p.arm[0]*1000).toFixed(0)}, ${(p.arm[1]*1000).toFixed(0)}) mm`;
       else txt += '⚠️ 无IK坐标';
       if(p.depth_mm) txt += ` 深度=${p.depth_mm}mm`;
       $('#teachPlaceText').textContent = txt;
@@ -749,7 +749,7 @@ $('#btnTeachPlace').onclick = async () => {
       updateTeachSteps();
       log('放置点: ' + txt,'ok');
       if(d.warning) teachMsg(d.warning, 'warn');
-      if(!p.arm) teachMsg('放置点缺少 IK 坐标，请手动填写 X/Y (米) 后重新记录', 'warn');
+      if(!p.arm) teachMsg('放置点缺少 IK 坐标，请手动填写 X/Y 后重新记录', 'warn');
     } else { teachMsg(d.error, 'err'); log(d.error,'err'); }
   }catch(e){ teachMsg('请求失败: '+e, 'err'); log('错误: '+e,'err'); }
 };
@@ -784,14 +784,15 @@ updateTeachSteps();
 
 // ── Teach Arm Move ──
 async function teachArmMove(){
-  const x=parseFloat($('#teachArmX').value), y=parseFloat($('#teachArmY').value), z=parseFloat($('#teachArmZ').value);
-  if(isNaN(x)||isNaN(y)||isNaN(z)){log('请输入有效的 XYZ 坐标','err');return}
-  log(`IK 移动: (${x}, ${y}, ${z})…`,'info');
+  const xm=parseFloat($('#teachArmX').value)/1000, ym=parseFloat($('#teachArmY').value)/1000, zm=parseFloat($('#teachArmZ').value)/1000;
+  if(isNaN(xm)||isNaN(ym)||isNaN(zm)){log('请输入有效的 XYZ 坐标','err');return}
+  const xd=$('#teachArmX').value, yd=$('#teachArmY').value, zd=$('#teachArmZ').value;
+  log(`IK 移动: (${xd}, ${yd}, ${zd}) mm…`,'info');
   $('#armStatus').innerHTML = '<span style="color:var(--warn)">移动中…</span>';
   try{
-    const r = await fetch('/api/arm/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x,y,z})});
+    const r = await fetch('/api/arm/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x:xm,y:ym,z:zm})});
     const d = await r.json();
-    if(d.ok){log(`移动完成: (${x}, ${y}, ${z})`,'ok');$('#armStatus').innerHTML=`<span style="color:var(--accent2)">位置 (${x}, ${y}, ${z})</span>`}
+    if(d.ok){log(`移动完成: (${xd}, ${yd}, ${zd}) mm`,'ok');$('#armStatus').innerHTML=`<span style="color:var(--accent2)">位置 (${xd}, ${yd}, ${zd}) mm</span>`}
     else{log('移动失败: '+d.error,'err');$('#armStatus').innerHTML='<span style="color:var(--danger)">IK 失败</span>'}
   }catch(e){log('错误: '+e,'err')}
 }
@@ -903,14 +904,15 @@ async function armBuzzer(){
   try{await fetch('/api/arm/buzzer',{method:'POST'});log('蜂鸣器','ok')}catch(e){log('错误: '+e,'err')}
 }
 async function armMoveTo(){
-  const x=parseFloat($('#armMoveX').value), y=parseFloat($('#armMoveY').value), z=parseFloat($('#armMoveZ').value);
-  if(isNaN(x)||isNaN(y)||isNaN(z)){log('请输入有效的 XYZ 坐标','err');return}
-  log(`IK 移动: (${x}, ${y}, ${z})…`,'info');
+  const xm=parseFloat($('#armMoveX').value)/1000, ym=parseFloat($('#armMoveY').value)/1000, zm=parseFloat($('#armMoveZ').value)/1000;
+  if(isNaN(xm)||isNaN(ym)||isNaN(zm)){log('请输入有效的 XYZ 坐标','err');return}
+  const xd=$('#armMoveX').value, yd=$('#armMoveY').value, zd=$('#armMoveZ').value;
+  log(`IK 移动: (${xd}, ${yd}, ${zd}) mm…`,'info');
   $('#armStatus').innerHTML = '<span style="color:var(--warn)">移动中…</span>';
   try{
-    const r = await fetch('/api/arm/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x,y,z})});
+    const r = await fetch('/api/arm/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x:xm,y:ym,z:zm})});
     const d = await r.json();
-    if(d.ok){log(`移动完成: (${x}, ${y}, ${z})`,'ok');$('#armStatus').innerHTML=`<span style="color:var(--accent2)">位置 (${x}, ${y}, ${z})</span>`}
+    if(d.ok){log(`移动完成: (${xd}, ${yd}, ${zd}) mm`,'ok');$('#armStatus').innerHTML=`<span style="color:var(--accent2)">位置 (${xd}, ${yd}, ${zd}) mm</span>`}
     else{log('移动失败: '+d.error,'err');$('#armStatus').innerHTML='<span style="color:var(--danger)">IK 失败</span>'}
   }catch(e){log('错误: '+e,'err')}
 }

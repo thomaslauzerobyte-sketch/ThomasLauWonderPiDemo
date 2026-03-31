@@ -72,7 +72,7 @@ _ROS2_ENV = (
 
 _SERVO_HOME = {6: 500, 5: 500, 4: 500, 3: 500, 2: 500, 1: 700}
 
-_BRIDGE_URL = "http://localhost:9090"
+_BRIDGE_URL = "http://localhost:9091"
 _BRIDGE_SCRIPT = "/home/ubuntu/arm_bridge.py"
 _BRIDGE_SRC = Path(__file__).with_name("arm_bridge.py")
 
