@@ -117,19 +117,7 @@ class CameraManager:
         self._ros_rgb_url: str = ""
         self._ros_depth_url: str = ""
         self._ros_stream_url: str = ""
-        self._ros_stereo_right_url: str = ""
-        self._stereo: dict[str, Any] = {}
         self._ros_http_timeout: float = 5.0
-
-    @staticmethod
-    def _depth_roi_median_ok(depth: np.ndarray | None, min_valid: int = 50) -> bool:
-        if depth is None or depth.size == 0:
-            return False
-        h, w = depth.shape[:2]
-        cy, cx = h // 2, w // 2
-        patch = depth[max(0, cy - 24) : cy + 24, max(0, cx - 24) : cx + 24]
-        v = patch[patch > min_valid]
-        return v.size >= 20
 
     def _open(self, cfg: dict[str, Any]) -> None:
         cam = cfg["camera"]
@@ -171,18 +159,6 @@ class CameraManager:
                     self._ros_http_timeout = ros_to
                     self._backend = "ros_web"
                     self._running = True
-                    st = cam.get("stereo") or {}
-                    self._ros_stereo_right_url = ""
-                    self._stereo = {}
-                    if st.get("enabled"):
-                        rt = str(st.get("right_topic", "")).strip()
-                        if rt:
-                            if not rt.startswith("/"):
-                                rt = "/" + rt
-                            self._ros_stereo_right_url = (
-                                f"{base}/snapshot?topic={quote(rt, safe='/')}"
-                            )
-                            self._stereo = dict(st)
                     return
 
         if backend in ("opencv", "auto"):
@@ -296,36 +272,9 @@ class CameraManager:
                 depth_16 = None
                 if depth_img is not None:
                     if depth_img.ndim == 3:
-                        depth_16 = cv2.cvtColor(depth_img, cv2.COLOR_BGR2GRAY).astype(
-                            np.uint16
-                        )
+                        depth_16 = cv2.cvtColor(depth_img, cv2.COLOR_BGR2GRAY).astype(np.uint16)
                     else:
                         depth_16 = depth_img.astype(np.uint16)
-                use_stereo = bool(self._stereo.get("enabled")) and bool(
-                    self._ros_stereo_right_url
-                )
-                if use_stereo and (
-                    depth_16 is None or not self._depth_roi_median_ok(depth_16)
-                ):
-                    from stereo_depth import depth_from_stereo_pair, effective_focal_px
-
-                    rbgr = self._fetch_snapshot(self._ros_stereo_right_url)
-                    if rbgr is not None:
-                        w = int(bgr.shape[1])
-                        fp = effective_focal_px(self._stereo, w)
-                        b_mm = float(self._stereo.get("baseline_mm", 50))
-                        try:
-                            depth_16 = depth_from_stereo_pair(
-                                bgr,
-                                rbgr,
-                                baseline_mm=b_mm,
-                                focal_px=fp,
-                                min_disparity=int(self._stereo.get("min_disparity", 0)),
-                                num_disparities=int(self._stereo.get("num_disparities", 128)),
-                                block_size=int(self._stereo.get("block_size", 5)),
-                            )
-                        except Exception:
-                            pass
                 return True, bgr, depth_16
             if self._backend == "deptrum" and self._cap and hasattr(self._cap, "read_all"):
                 ok, bgr, depth, _ir = self._cap.read_all()
@@ -363,8 +312,6 @@ class CameraManager:
             self._ros_rgb_url = ""
             self._ros_depth_url = ""
             self._ros_stream_url = ""
-            self._ros_stereo_right_url = ""
-            self._stereo = {}
 
     @property
     def is_open(self) -> bool:
@@ -1068,14 +1015,7 @@ def api_calib_board3d():
     if not ok or bgr is None:
         return jsonify(ok=False, error="无法读取帧"), 500
     if depth is None:
-        return jsonify(
-            ok=False,
-            error=(
-                "无深度图：请保证深度话题有数据，或在 config/default.yaml 中设置 "
-                "camera.stereo.enabled=true，并正确填写 right_topic、baseline_mm、"
-                "focal_px（或 focal_ratio_of_width）"
-            ),
-        ), 400
+        return jsonify(ok=False, error="当前相机无深度图，无法进行 3D 棋盘格标定"), 400
 
     cfg = _cfg()
     bc = cfg.get("calibration_board", {})
@@ -1135,6 +1075,117 @@ def api_calib_board3d():
     )
     if data.get("include_preview"):
         vis = draw_chessboard_overlay(bgr, corners, cols, rows)
+        _, buf = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        import base64
+
+        resp["preview"] = "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode(
+            "ascii"
+        )
+    return jsonify(resp)
+
+
+@app.route("/api/calibrate/tag3d", methods=["POST"])
+def api_calib_tag3d():
+    """一次拍摄检测单个 AprilTag，用四角点 + 深度生成 4 组标定点（单 Tag 即可拟合 3D 仿射）。"""
+    data = request.get_json(silent=True) or {}
+    if data.get("arm_x_mm") is not None and data.get("arm_y_mm") is not None:
+        cx_m = float(data["arm_x_mm"]) / 1000.0
+        cy_m = float(data["arm_y_mm"]) / 1000.0
+    elif data.get("arm_x") is not None and data.get("arm_y") is not None:
+        cx_m = float(data["arm_x"])
+        cy_m = float(data["arm_y"])
+    else:
+        return jsonify(
+            ok=False,
+            error="缺少坐标：请传 arm_x_mm/arm_y_mm（毫米）或 arm_x/arm_y（米），为 Tag 几何中心",
+        ), 400
+
+    if not camera.is_open:
+        return jsonify(ok=False, error="相机未打开"), 503
+    ok, bgr, depth = camera.read_frame_with_depth()
+    if not ok or bgr is None:
+        return jsonify(ok=False, error="无法读取帧"), 500
+    if depth is None:
+        return jsonify(
+            ok=False,
+            error="当前无深度图；双目/深度相机需输出深度话题后再做 Tag 3D 标定",
+        ), 400
+
+    cfg = _cfg()
+    tc = cfg.get("calibration_tag", {})
+    family = str(data.get("family") or tc.get("family", "DICT_APRILTAG_36h11"))
+    edge_mm = float(data.get("tag_edge_mm") or tc.get("tag_edge_mm", 40))
+    tid = data.get("tag_id", tc.get("tag_id"))
+    if tid is not None:
+        tid = int(tid)
+    yaw = float(data.get("yaw_deg", tc.get("yaw_deg", 0)))
+
+    try:
+        from tag_calib3d import (
+            detect_apriltag_quad,
+            draw_tag_overlay,
+            tag_quad_to_calib_points,
+        )
+    except ImportError as e:
+        return jsonify(ok=False, error=f"tag_calib3d 加载失败: {e}"), 500
+
+    try:
+        det = detect_apriltag_quad(bgr, family=family, tag_id=tid)
+    except RuntimeError as e:
+        return jsonify(ok=False, error=str(e)), 500
+
+    if det is None:
+        return jsonify(
+            ok=False,
+            error=(
+                f"未检测到 AprilTag（字典 {family}）。请打印对应族标签、保证光照与对焦；"
+                "或在请求 JSON 中指定 family / tag_id，与 config calibration_tag 一致。"
+            ),
+        ), 400
+
+    quad, mid = det
+    try:
+        new_points, meta = tag_quad_to_calib_points(
+            quad,
+            depth,
+            tag_edge_mm=edge_mm,
+            center_arm_x_m=cx_m,
+            center_arm_y_m=cy_m,
+            yaw_deg=yaw,
+        )
+    except ValueError as e:
+        return jsonify(ok=False, error=str(e)), 400
+
+    meta["marker_id"] = mid
+    meta["family"] = family
+
+    if len(new_points) < 4:
+        return jsonify(
+            ok=False,
+            error=(
+                f"Tag 四角深度有效点不足 4（当前 {len(new_points)}），"
+                "请让 Tag 落在深度有效范围内，或检查 tag_edge_mm 是否与打印一致。"
+            ),
+            meta=meta,
+        ), 400
+
+    for p in new_points:
+        _calib_points.append(
+            {
+                "pixel": p["pixel"],
+                "arm": p["arm"],
+                "depth_mm": p["depth_mm"],
+            }
+        )
+
+    resp: dict[str, Any] = dict(
+        ok=True,
+        added=len(new_points),
+        total=len(_calib_points),
+        meta=meta,
+    )
+    if data.get("include_preview"):
+        vis = draw_tag_overlay(bgr, quad, mid)
         _, buf = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 85])
         import base64
 

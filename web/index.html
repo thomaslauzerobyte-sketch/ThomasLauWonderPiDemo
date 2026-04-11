@@ -216,7 +216,7 @@ label{font-size:13px;color:var(--muted)}
         将目标物体依次放到 4 个已知臂坐标位置，每次输入坐标后点击「记录」。
       </p>
       <p style="color:var(--muted);font-size:12px;margin-bottom:8px">
-        <b>棋盘格 3D 批量标定：</b>黑白棋盘格平放；末端对准 OpenCV <b>第 1 个内角点</b>，填该点臂坐标（毫米）后点「棋盘格批量采点」— 一次拍摄即可生成大量 3D 约束（无需再摆 4 处目标）。格距见 <code>calibration_board</code>。若无 ToF 深度图，在 <code>camera.stereo</code> 中开启双目并配置 <code>right_topic</code>、<code>baseline_mm</code>、焦距。
+        <b>推荐（双目深度）：AprilTag</b> — 打印与配置 <code>calibration_tag.family</code> 一致的单个 AprilTag（如 36h11）。将 Tag 平放，用 IK 测 <b>Tag 几何中心</b> 的臂坐标，填入「中心 X/Y」「外框边长(mm)」，点「AprilTag 批量采点」。一次检测可得 4 个带深度角点，满足 3D 仿射最少点数。族名、默认边长见 <code>config/default.yaml</code> 的 <code>calibration_tag</code>。
       </p>
       <div class="btn-row" style="align-items:end">
         <span><label>臂 X</label><br><input type="number" id="calibArmX" value="0" step="0.01" style="width:80px"></span>
@@ -225,10 +225,19 @@ label{font-size:13px;color:var(--muted)}
         <button class="btn btn-outline btn-sm" id="btnCalibReset">重置</button>
         <button class="btn btn-success btn-sm" id="btnCalibCompute" disabled>计算标定</button>
       </div>
-      <div class="btn-row" style="align-items:end;margin-top:8px">
+      <div class="btn-row" style="align-items:end;margin-top:8px;flex-wrap:wrap">
+        <span><label>Tag 中心 X (mm)</label><br><input type="number" id="tagCenterXmm" value="180" step="1" style="width:88px"></span>
+        <span><label>Tag 中心 Y (mm)</label><br><input type="number" id="tagCenterYmm" value="0" step="1" style="width:88px"></span>
+        <span><label>Tag 外框边长 mm</label><br><input type="number" id="tagEdgeMm" value="40" step="1" min="5" style="width:88px"></span>
+        <button class="btn btn-success btn-sm" id="btnTag3d">AprilTag 批量采点 (3D)</button>
+      </div>
+      <p style="color:var(--muted);font-size:11px;margin-top:6px">
+        <b>可选：</b>棋盘格 — 原点为第 1 个内角点，配置 <code>calibration_board</code>。
+      </p>
+      <div class="btn-row" style="align-items:end;margin-top:4px">
         <span><label>棋盘原点 X (mm)</label><br><input type="number" id="boardOriginXmm" value="180" step="1" style="width:88px"></span>
         <span><label>棋盘原点 Y (mm)</label><br><input type="number" id="boardOriginYmm" value="0" step="1" style="width:88px"></span>
-        <button class="btn btn-primary btn-sm" id="btnBoard3d">棋盘格批量采点 (3D)</button>
+        <button class="btn btn-outline btn-sm" id="btnBoard3d">棋盘格批量采点 (3D)</button>
       </div>
       <div id="calibInfo" style="margin-top:8px">
         <table class="calib-table">
@@ -237,7 +246,7 @@ label{font-size:13px;color:var(--muted)}
         </table>
       </div>
       <div id="calibResult" style="font-size:12px;color:var(--accent2);margin-top:4px"></div>
-      <img id="board3dPreview" alt="棋盘格检测预览" style="display:none;max-width:100%;margin-top:8px;border-radius:6px;border:1px solid var(--border)">
+      <img id="board3dPreview" alt="标定检测预览" style="display:none;max-width:100%;margin-top:8px;border-radius:6px;border:1px solid var(--border)">
     </div>
 
     <!-- Teach record -->
@@ -755,6 +764,32 @@ $('#btnCalibCompute').onclick = async () => {
       log('标定完成','ok');
     } else {log(d.error,'err')}
   }catch(e){log('错误: '+e,'err')}
+};
+$('#btnTag3d').onclick = async () => {
+  const ax = parseFloat($('#tagCenterXmm').value);
+  const ay = parseFloat($('#tagCenterYmm').value);
+  const edge = parseFloat($('#tagEdgeMm').value);
+  if(isNaN(ax)||isNaN(ay)){ log('请填写 Tag 中心 X/Y (mm)','err'); return; }
+  if(isNaN(edge)||edge<5){ log('请填写合理的 Tag 外框边长 (mm)','err'); return; }
+  log('AprilTag 3D 批量采点…','info');
+  try{
+    const r = await fetch('/api/calibrate/tag3d',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ arm_x_mm: ax, arm_y_mm: ay, tag_edge_mm: edge, include_preview: true })
+    });
+    const d = await r.json();
+    if(d.ok){
+      const m = d.meta||{};
+      log(`AprilTag: +${d.added} 点, 累计 ${d.total} (id=${m.marker_id}, 深度角点 ${m.points_with_depth}/4)`,'ok');
+      $('#calibResult').textContent = `AprilTag 已添加 ${d.added} 个 3D 点，可点「计算标定」`;
+      if(d.preview){
+        const prev = document.getElementById('board3dPreview');
+        if(prev){ prev.src = d.preview; prev.style.display = ''; }
+      }
+      renderCalibTableFromServer();
+    } else { log(d.error||'失败','err'); }
+  }catch(e){ log('错误: '+e,'err'); }
 };
 $('#btnBoard3d').onclick = async () => {
   const ax = parseFloat($('#boardOriginXmm').value);
