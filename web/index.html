@@ -215,12 +215,20 @@ label{font-size:13px;color:var(--muted)}
       <p style="color:var(--muted);font-size:13px;margin-bottom:8px">
         将目标物体依次放到 4 个已知臂坐标位置，每次输入坐标后点击「记录」。
       </p>
+      <p style="color:var(--muted);font-size:12px;margin-bottom:8px">
+        <b>棋盘格 3D 批量标定：</b>黑白棋盘格平放；末端对准 OpenCV <b>第 1 个内角点</b>，填该点臂坐标（毫米）后点「棋盘格批量采点」— 一次拍摄即可生成大量 3D 约束（无需再摆 4 处目标）。格距见 <code>calibration_board</code>。若无 ToF 深度图，在 <code>camera.stereo</code> 中开启双目并配置 <code>right_topic</code>、<code>baseline_mm</code>、焦距。
+      </p>
       <div class="btn-row" style="align-items:end">
         <span><label>臂 X</label><br><input type="number" id="calibArmX" value="0" step="0.01" style="width:80px"></span>
         <span><label>臂 Y</label><br><input type="number" id="calibArmY" value="0" step="0.01" style="width:80px"></span>
         <button class="btn btn-primary btn-sm" id="btnCalibPoint">记录标定点</button>
         <button class="btn btn-outline btn-sm" id="btnCalibReset">重置</button>
         <button class="btn btn-success btn-sm" id="btnCalibCompute" disabled>计算标定</button>
+      </div>
+      <div class="btn-row" style="align-items:end;margin-top:8px">
+        <span><label>棋盘原点 X (mm)</label><br><input type="number" id="boardOriginXmm" value="180" step="1" style="width:88px"></span>
+        <span><label>棋盘原点 Y (mm)</label><br><input type="number" id="boardOriginYmm" value="0" step="1" style="width:88px"></span>
+        <button class="btn btn-primary btn-sm" id="btnBoard3d">棋盘格批量采点 (3D)</button>
       </div>
       <div id="calibInfo" style="margin-top:8px">
         <table class="calib-table">
@@ -229,6 +237,7 @@ label{font-size:13px;color:var(--muted)}
         </table>
       </div>
       <div id="calibResult" style="font-size:12px;color:var(--accent2);margin-top:4px"></div>
+      <img id="board3dPreview" alt="棋盘格检测预览" style="display:none;max-width:100%;margin-top:8px;border-radius:6px;border:1px solid var(--border)">
     </div>
 
     <!-- Teach record -->
@@ -747,6 +756,40 @@ $('#btnCalibCompute').onclick = async () => {
     } else {log(d.error,'err')}
   }catch(e){log('错误: '+e,'err')}
 };
+$('#btnBoard3d').onclick = async () => {
+  const ax = parseFloat($('#boardOriginXmm').value);
+  const ay = parseFloat($('#boardOriginYmm').value);
+  if(isNaN(ax)||isNaN(ay)){ log('请填写棋盘原点 X/Y (mm)','err'); return; }
+  log('棋盘格 3D 批量采点…','info');
+  try{
+    const r = await fetch('/api/calibrate/board3d',{
+      method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ arm_x_mm: ax, arm_y_mm: ay, include_preview: true })
+    });
+    const d = await r.json();
+    if(d.ok){
+      const m = d.meta||{};
+      log(`棋盘格采点: +${d.added} 点, 累计 ${d.total} (深度有效角点 ${m.points_with_depth}/${m.corners_total})`,'ok');
+      $('#calibResult').textContent = `棋盘格已添加 ${d.added} 个 3D 约束点，可点「计算标定」`;
+      if(d.preview){
+        const prev = document.getElementById('board3dPreview');
+        if(prev){ prev.src = d.preview; prev.style.display = ''; }
+      }
+      renderCalibTableFromServer();
+    } else { log(d.error||'失败','err'); }
+  }catch(e){ log('错误: '+e,'err'); }
+};
+async function renderCalibTableFromServer(){
+  try{
+    const r = await fetch('/api/calibrate/status');
+    const d = await r.json();
+    if(d.ok && d.points){
+      calibPoints = d.points;
+      renderCalibTable();
+    }
+  }catch(e){}
+}
 
 // ── Teach Record ──
 let teachHasPick = false, teachHasPlace = false;

@@ -117,7 +117,19 @@ class CameraManager:
         self._ros_rgb_url: str = ""
         self._ros_depth_url: str = ""
         self._ros_stream_url: str = ""
+        self._ros_stereo_right_url: str = ""
+        self._stereo: dict[str, Any] = {}
         self._ros_http_timeout: float = 5.0
+
+    @staticmethod
+    def _depth_roi_median_ok(depth: np.ndarray | None, min_valid: int = 50) -> bool:
+        if depth is None or depth.size == 0:
+            return False
+        h, w = depth.shape[:2]
+        cy, cx = h // 2, w // 2
+        patch = depth[max(0, cy - 24) : cy + 24, max(0, cx - 24) : cx + 24]
+        v = patch[patch > min_valid]
+        return v.size >= 20
 
     def _open(self, cfg: dict[str, Any]) -> None:
         cam = cfg["camera"]
@@ -159,6 +171,18 @@ class CameraManager:
                     self._ros_http_timeout = ros_to
                     self._backend = "ros_web"
                     self._running = True
+                    st = cam.get("stereo") or {}
+                    self._ros_stereo_right_url = ""
+                    self._stereo = {}
+                    if st.get("enabled"):
+                        rt = str(st.get("right_topic", "")).strip()
+                        if rt:
+                            if not rt.startswith("/"):
+                                rt = "/" + rt
+                            self._ros_stereo_right_url = (
+                                f"{base}/snapshot?topic={quote(rt, safe='/')}"
+                            )
+                            self._stereo = dict(st)
                     return
 
         if backend in ("opencv", "auto"):
@@ -272,9 +296,36 @@ class CameraManager:
                 depth_16 = None
                 if depth_img is not None:
                     if depth_img.ndim == 3:
-                        depth_16 = cv2.cvtColor(depth_img, cv2.COLOR_BGR2GRAY).astype(np.uint16)
+                        depth_16 = cv2.cvtColor(depth_img, cv2.COLOR_BGR2GRAY).astype(
+                            np.uint16
+                        )
                     else:
                         depth_16 = depth_img.astype(np.uint16)
+                use_stereo = bool(self._stereo.get("enabled")) and bool(
+                    self._ros_stereo_right_url
+                )
+                if use_stereo and (
+                    depth_16 is None or not self._depth_roi_median_ok(depth_16)
+                ):
+                    from stereo_depth import depth_from_stereo_pair, effective_focal_px
+
+                    rbgr = self._fetch_snapshot(self._ros_stereo_right_url)
+                    if rbgr is not None:
+                        w = int(bgr.shape[1])
+                        fp = effective_focal_px(self._stereo, w)
+                        b_mm = float(self._stereo.get("baseline_mm", 50))
+                        try:
+                            depth_16 = depth_from_stereo_pair(
+                                bgr,
+                                rbgr,
+                                baseline_mm=b_mm,
+                                focal_px=fp,
+                                min_disparity=int(self._stereo.get("min_disparity", 0)),
+                                num_disparities=int(self._stereo.get("num_disparities", 128)),
+                                block_size=int(self._stereo.get("block_size", 5)),
+                            )
+                        except Exception:
+                            pass
                 return True, bgr, depth_16
             if self._backend == "deptrum" and self._cap and hasattr(self._cap, "read_all"):
                 ok, bgr, depth, _ir = self._cap.read_all()
@@ -312,6 +363,8 @@ class CameraManager:
             self._ros_rgb_url = ""
             self._ros_depth_url = ""
             self._ros_stream_url = ""
+            self._ros_stereo_right_url = ""
+            self._stereo = {}
 
     @property
     def is_open(self) -> bool:
@@ -991,6 +1044,104 @@ def api_calib_point():
     }
     _calib_points.append(point)
     return jsonify(ok=True, point=point, total=len(_calib_points))
+
+
+@app.route("/api/calibrate/board3d", methods=["POST"])
+def api_calib_board3d():
+    """一次拍摄棋盘格，按格距生成多组 (pixel, depth_mm, arm) 写入标定点列表。"""
+    data = request.get_json(silent=True) or {}
+    if data.get("arm_x_mm") is not None and data.get("arm_y_mm") is not None:
+        ox = float(data["arm_x_mm"]) / 1000.0
+        oy = float(data["arm_y_mm"]) / 1000.0
+    elif data.get("arm_x") is not None and data.get("arm_y") is not None:
+        ox = float(data["arm_x"])
+        oy = float(data["arm_y"])
+    else:
+        return jsonify(
+            ok=False,
+            error="缺少坐标：请传 arm_x_mm/arm_y_mm（毫米）或 arm_x/arm_y（米）",
+        ), 400
+
+    if not camera.is_open:
+        return jsonify(ok=False, error="相机未打开"), 503
+    ok, bgr, depth = camera.read_frame_with_depth()
+    if not ok or bgr is None:
+        return jsonify(ok=False, error="无法读取帧"), 500
+    if depth is None:
+        return jsonify(
+            ok=False,
+            error=(
+                "无深度图：请保证深度话题有数据，或在 config/default.yaml 中设置 "
+                "camera.stereo.enabled=true，并正确填写 right_topic、baseline_mm、"
+                "focal_px（或 focal_ratio_of_width）"
+            ),
+        ), 400
+
+    cfg = _cfg()
+    bc = cfg.get("calibration_board", {})
+    cols = int(data.get("cols") or bc.get("cols", 5))
+    rows = int(data.get("rows") or bc.get("rows", 4))
+    square_mm = float(data.get("square_size_mm") or bc.get("square_size_mm", 25))
+    yaw = float(data.get("board_yaw_deg", bc.get("board_yaw_deg", 0)))
+
+    from board_calib3d import (
+        board_corners_to_calib_points,
+        draw_chessboard_overlay,
+        find_chessboard_corners,
+    )
+
+    corners = find_chessboard_corners(bgr, cols, rows)
+    if corners is None:
+        return jsonify(
+            ok=False,
+            error=f"未检测到 {cols}×{rows} 棋盘格内角点，请调整光照/距离或修改 calibration_board.cols/rows",
+        ), 400
+
+    try:
+        new_points, meta = board_corners_to_calib_points(
+            corners,
+            depth,
+            pattern_cols=cols,
+            pattern_rows=rows,
+            square_size_mm=square_mm,
+            origin_arm_x_m=ox,
+            origin_arm_y_m=oy,
+            board_yaw_deg=yaw,
+        )
+    except ValueError as e:
+        return jsonify(ok=False, error=str(e)), 400
+
+    if len(new_points) < 4:
+        return jsonify(
+            ok=False,
+            error=f"有效深度角点不足 4 个（当前 {len(new_points)}），请对准深度有效的区域或检查标定板",
+            meta=meta,
+        ), 400
+
+    for p in new_points:
+        _calib_points.append(
+            {
+                "pixel": p["pixel"],
+                "arm": p["arm"],
+                "depth_mm": p["depth_mm"],
+            }
+        )
+
+    resp: dict[str, Any] = dict(
+        ok=True,
+        added=len(new_points),
+        total=len(_calib_points),
+        meta=meta,
+    )
+    if data.get("include_preview"):
+        vis = draw_chessboard_overlay(bgr, corners, cols, rows)
+        _, buf = cv2.imencode(".jpg", vis, [cv2.IMWRITE_JPEG_QUALITY, 85])
+        import base64
+
+        resp["preview"] = "data:image/jpeg;base64," + base64.b64encode(buf.tobytes()).decode(
+            "ascii"
+        )
+    return jsonify(resp)
 
 
 @app.route("/api/calibrate/reset", methods=["POST"])

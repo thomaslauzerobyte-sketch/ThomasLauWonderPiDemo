@@ -29,6 +29,20 @@ camera:
   # Deptrum 专用: 分辨率模式索引
   resolution_mode_index: 2
 
+  # 双目立体：无 ToF/深度话题或深度无效时，用左右目快照算视差深度（单块标定板一次拍摄即可）
+  stereo:
+    # 使用双目算深度时请改为 true，并在容器内 ros2 topic list 核对 right_topic
+    enabled: false
+    # 右目（或副相机）ROS 图像话题，须与左目已立体校正、行对齐
+    right_topic: "/depth_cam/right/image_raw"
+    baseline_mm: 50
+    # 水平焦距（像素）；填 0 则用 focal_ratio_of_width * 图像宽度 近似
+    focal_px: 0
+    focal_ratio_of_width: 0.72
+    num_disparities: 128
+    block_size: 5
+    min_disparity: 0
+
 recording:
   default_duration_sec: 30
   # OpenCV fourcc: mp4v / MJPG / XVID（依平台与编码器而定）
@@ -62,6 +76,16 @@ blue_detect:
 checkerboard:
   cols: 5
   rows: 4
+
+# 棋盘格 3D 批量标定（与 calibration3d 仿射拟合配合）
+# 将板平放，臂末端对准 OpenCV 第 0 个内角点（行优先、图像中通常左上区域第一个格点），
+# 输入该点臂坐标 (arm_x, arm_y) 米；square_size_mm 为单格边长（毫米）
+calibration_board:
+  cols: 5
+  rows: 4
+  square_size_mm: 25
+  # 标定板平面相对臂坐标系的绕 Z 旋转（度），板格 X 与臂 X 平行时为 0
+  board_yaw_deg: 0
 
 # 黑白标记板(TAG) 检测参数
 tag_detect:
