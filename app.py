@@ -1018,24 +1018,53 @@ def api_calib_board3d():
         return jsonify(ok=False, error="当前相机无深度图，无法进行 3D 棋盘格标定"), 400
 
     cfg = _cfg()
+    cb_d = cfg.get("checkerboard", {})
     bc = cfg.get("calibration_board", {})
-    cols = int(data.get("cols") or bc.get("cols", 5))
-    rows = int(data.get("rows") or bc.get("rows", 4))
-    square_mm = float(data.get("square_size_mm") or bc.get("square_size_mm", 25))
-    yaw = float(data.get("board_yaw_deg", bc.get("board_yaw_deg", 0)))
+
+    def _float_or(
+        key: str, *sources: dict[str, Any], default: float
+    ) -> float:
+        v = data.get(key)
+        if v is not None and v != "":
+            return float(v)
+        for s in sources:
+            if isinstance(s, dict) and s.get(key) is not None:
+                return float(s[key])
+        return default
+
+    # 内角点列×行必须与实时检测一致：只用 checkerboard（含运行时「应用」），
+    # 不再接受请求体里的 cols/rows（此前易填成 8×8 等与预览不一致导致失败）。
+    cols = int(cb_d.get("cols") or bc.get("cols", 5))
+    rows = int(cb_d.get("rows") or bc.get("rows", 4))
+    square_mm = _float_or("square_size_mm", bc, default=25.0)
+    yaw = _float_or("board_yaw_deg", bc, default=0.0)
 
     from board_calib3d import (
         board_corners_to_calib_points,
         draw_chessboard_overlay,
-        find_chessboard_corners,
+        find_chessboard_corners_autotry,
     )
 
-    corners = find_chessboard_corners(bgr, cols, rows)
-    if corners is None:
+    hint_c, hint_r = cols, rows
+    min_i = int(bc.get("autotry_min_inner", 3))
+    max_i = int(bc.get("autotry_max_inner", 16))
+    at = find_chessboard_corners_autotry(
+        bgr,
+        hint_cols=hint_c,
+        hint_rows=hint_r,
+        min_inner=max(2, min_i),
+        max_inner=max(min_i, max_i),
+    )
+    if at is None:
         return jsonify(
             ok=False,
-            error=f"未检测到 {cols}×{rows} 棋盘格内角点，请调整光照/距离或修改 calibration_board.cols/rows",
+            error=(
+                f"已在约 {min_i}×{min_i}～{max_i}×{max_i} 内角点范围内自动尝试仍未检测到棋盘格"
+                f"（配置 hint={hint_c}×{hint_r}）。请改善光照、倾角、距离或标定板占比。"
+            ),
         ), 400
+
+    corners, cols, rows, autotry_attempts = at
 
     try:
         new_points, meta = board_corners_to_calib_points(
@@ -1067,6 +1096,12 @@ def api_calib_board3d():
             }
         )
 
+    meta = dict(meta)
+    meta["pattern_hint"] = [hint_c, hint_r]
+    meta["autotry_attempts"] = autotry_attempts
+    if (cols, rows) != (hint_c, hint_r):
+        meta["pattern_autopicked"] = True
+
     resp: dict[str, Any] = dict(
         ok=True,
         added=len(new_points),
@@ -1084,21 +1119,52 @@ def api_calib_board3d():
     return jsonify(resp)
 
 
+def _parse_robot_pose_wxyz(data: dict[str, Any]) -> tuple[list[float], list[float]] | None:
+    """解析与 GetRobotPose 一致的末端位姿：position + orientation (四元数 w,x,y,z)。"""
+    rp = data.get("robot_pose")
+    if not isinstance(rp, dict):
+        return None
+    pos = rp.get("position")
+    if isinstance(pos, dict):
+        xyz = [float(pos["x"]), float(pos["y"]), float(pos["z"])]
+    elif isinstance(pos, (list, tuple)) and len(pos) >= 3:
+        xyz = [float(pos[0]), float(pos[1]), float(pos[2])]
+    else:
+        return None
+    ori = rp.get("orientation")
+    if isinstance(ori, dict):
+        quat = [
+            float(ori["w"]),
+            float(ori["x"]),
+            float(ori["y"]),
+            float(ori["z"]),
+        ]
+    elif isinstance(ori, (list, tuple)) and len(ori) >= 4:
+        quat = [float(ori[0]), float(ori[1]), float(ori[2]), float(ori[3])]
+    else:
+        return None
+    return xyz, quat
+
+
 @app.route("/api/calibrate/tag3d", methods=["POST"])
 def api_calib_tag3d():
     """一次拍摄检测单个 AprilTag，用四角点 + 深度生成 4 组标定点（单 Tag 即可拟合 3D 仿射）。"""
     data = request.get_json(silent=True) or {}
-    if data.get("arm_x_mm") is not None and data.get("arm_y_mm") is not None:
-        cx_m = float(data["arm_x_mm"]) / 1000.0
-        cy_m = float(data["arm_y_mm"]) / 1000.0
-    elif data.get("arm_x") is not None and data.get("arm_y") is not None:
-        cx_m = float(data["arm_x"])
-        cy_m = float(data["arm_y"])
-    else:
-        return jsonify(
-            ok=False,
-            error="缺少坐标：请传 arm_x_mm/arm_y_mm（毫米）或 arm_x/arm_y（米），为 Tag 几何中心",
-        ), 400
+    use_handeye = bool(data.get("use_handeye"))
+
+    if not use_handeye:
+        if data.get("arm_x_mm") is not None and data.get("arm_y_mm") is not None:
+            cx_m = float(data["arm_x_mm"]) / 1000.0
+            cy_m = float(data["arm_y_mm"]) / 1000.0
+        elif data.get("arm_x") is not None and data.get("arm_y") is not None:
+            cx_m = float(data["arm_x"])
+            cy_m = float(data["arm_y"])
+        else:
+            return jsonify(
+                ok=False,
+                error="缺少坐标：请传 arm_x_mm/arm_y_mm（毫米）或 arm_x/arm_y（米），为 Tag 几何中心；"
+                "若 use_handeye=true 则改为传 robot_pose（与 /kinematics/get_current_pose 一致）",
+            ), 400
 
     if not camera.is_open:
         return jsonify(ok=False, error="相机未打开"), 503
@@ -1125,7 +1191,9 @@ def api_calib_tag3d():
             detect_apriltag_quad,
             draw_tag_overlay,
             tag_quad_to_calib_points,
+            tag_quad_to_calib_points_handeye,
         )
+        from common import load_camera_info_hand2cam
     except ImportError as e:
         return jsonify(ok=False, error=f"tag_calib3d 加载失败: {e}"), 500
 
@@ -1145,15 +1213,58 @@ def api_calib_tag3d():
 
     quad, mid = det
     try:
-        new_points, meta = tag_quad_to_calib_points(
-            quad,
-            depth,
-            tag_edge_mm=edge_mm,
-            center_arm_x_m=cx_m,
-            center_arm_y_m=cy_m,
-            yaw_deg=yaw,
-        )
+        if use_handeye:
+            ci_rel = data.get("camera_info_file") or tc.get("camera_info_file")
+            if not ci_rel:
+                return jsonify(
+                    ok=False,
+                    error="use_handeye=true 需要 calibration_tag.camera_info_file 或请求 JSON 中的 camera_info_file",
+                ), 400
+            ci_path = resolve_path(str(ci_rel))
+            if not ci_path.is_file():
+                return jsonify(ok=False, error=f"找不到 camera_info 文件: {ci_path}"), 400
+
+            parsed = _parse_robot_pose_wxyz(data)
+            if parsed is None:
+                return jsonify(
+                    ok=False,
+                    error='use_handeye=true 需要 robot_pose: {"position":{"x","y","z"},"orientation":{"w","x","y","z"}}（与官方 GetRobotPose 一致）',
+                ), 400
+            xyz, quat_wxyz = parsed
+
+            hand2cam, cam_yaml = load_camera_info_hand2cam(ci_path)
+            k_list = data.get("camera_matrix") or cam_yaml.get("camera_matrix")
+            d_list = data.get("distortion_coefficients") or cam_yaml.get("distortion_coefficients")
+            if not k_list or not d_list:
+                return jsonify(
+                    ok=False,
+                    error="手眼模式需要相机内参：在 camera_info.yaml 中提供 camera_matrix 与 distortion_coefficients，或在请求 JSON 中传入",
+                ), 400
+            K = np.asarray(k_list, dtype=np.float64).reshape(3, 3)
+            D = np.asarray(d_list, dtype=np.float64).reshape(-1, 1)
+
+            new_points, meta = tag_quad_to_calib_points_handeye(
+                quad,
+                depth,
+                tag_edge_m=edge_mm / 1000.0,
+                K=K,
+                D=D,
+                hand2cam=hand2cam,
+                endpoint_pose_xyz=xyz,
+                endpoint_pose_quat_wxyz=quat_wxyz,
+            )
+        else:
+            new_points, meta = tag_quad_to_calib_points(
+                quad,
+                depth,
+                tag_edge_mm=edge_mm,
+                center_arm_x_m=cx_m,
+                center_arm_y_m=cy_m,
+                yaw_deg=yaw,
+            )
     except ValueError as e:
+        return jsonify(ok=False, error=str(e)), 400
+    except (KeyError, OSError, RuntimeError) as e:
         return jsonify(ok=False, error=str(e)), 400
 
     meta["marker_id"] = mid

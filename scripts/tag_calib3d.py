@@ -14,6 +14,8 @@ from typing import Any
 import cv2
 import numpy as np
 
+from common import xyz_quat_to_mat
+
 
 def _sample_depth_mm(depth: np.ndarray | None, cx: int, cy: int, radius: int = 2) -> int | None:
     if depth is None or not (0 <= cy < depth.shape[0] and 0 <= cx < depth.shape[1]):
@@ -129,6 +131,101 @@ def tag_quad_to_calib_points(
         "skipped_no_depth": skipped,
         "center_arm_m": [center_arm_x_m, center_arm_y_m],
         "yaw_deg": yaw_deg,
+    }
+    return out, meta
+
+
+def solvepnp_T_cam_tag(
+    quad_px: np.ndarray,
+    tag_edge_m: float,
+    K: np.ndarray,
+    D: np.ndarray,
+) -> np.ndarray:
+    """单 Tag 四角像素 + 内参 → 相机坐标系下标记位姿 T_cam_tag（与官方 solvePnP 角点顺序一致）。"""
+    if quad_px.shape != (4, 2):
+        raise ValueError("quad 必须为 (4,2)")
+    h = float(tag_edge_m) / 2.0
+    obj = np.array(
+        [
+            [-h, -h, 0.0],
+            [h, -h, 0.0],
+            [h, h, 0.0],
+            [-h, h, 0.0],
+        ],
+        dtype=np.float64,
+    )
+    img = quad_px.astype(np.float64).reshape(-1, 1, 2)
+    ok, rvec, tvec = cv2.solvePnP(obj, img, K, D, flags=cv2.SOLVEPNP_ITERATIVE)
+    if not ok:
+        raise RuntimeError("solvePnP 失败，请检查 K/D 与角点顺序")
+    rmat, _ = cv2.Rodrigues(rvec)
+    t = tvec.reshape(3)
+    t44 = np.eye(4, dtype=np.float64)
+    t44[:3, :3] = rmat
+    t44[:3, 3] = t
+    return t44
+
+
+def tag_quad_to_calib_points_handeye(
+    quad_px: np.ndarray,
+    depth: np.ndarray | None,
+    *,
+    tag_edge_m: float,
+    K: np.ndarray,
+    D: np.ndarray,
+    hand2cam: np.ndarray,
+    endpoint_pose_xyz: list[float] | np.ndarray,
+    endpoint_pose_quat_wxyz: list[float] | np.ndarray,
+    min_depth_mm: int = 1,
+) -> tuple[list[dict[str, Any]], dict[str, Any]]:
+    """与官方 CalibrationNode 链一致：角点在 Tag 系 → 相机系 → 手眼 → 末端系 → 世界系。
+
+    P_world = T_endpoint @ hand2cam @ T_cam_tag @ P_tag；
+    calibration3d 使用世界系下 x,y（与当前工程 arm 含义一致）及像素深度。
+    """
+    if hand2cam.shape != (4, 4):
+        raise ValueError("hand2cam 须为 4×4")
+    t_cam_tag = solvepnp_T_cam_tag(quad_px, tag_edge_m, K, D)
+    endpoint = xyz_quat_to_mat(endpoint_pose_xyz, endpoint_pose_quat_wxyz)
+    chain = endpoint @ hand2cam @ t_cam_tag
+
+    h = float(tag_edge_m) / 2.0
+    corners_tag = np.array(
+        [
+            [-h, -h, 0.0, 1.0],
+            [h, -h, 0.0, 1.0],
+            [h, h, 0.0, 1.0],
+            [-h, h, 0.0, 1.0],
+        ],
+        dtype=np.float64,
+    )
+
+    out: list[dict[str, Any]] = []
+    skipped = 0
+    for k in range(4):
+        pw = chain @ corners_tag[k]
+        xw, yw = float(pw[0]), float(pw[1])
+        u_f, v_f = float(quad_px[k, 0]), float(quad_px[k, 1])
+        ui, vi = int(round(u_f)), int(round(v_f))
+        d_mm = _sample_depth_mm(depth, ui, vi)
+        if d_mm is None or d_mm < min_depth_mm:
+            skipped += 1
+            continue
+        out.append(
+            {
+                "pixel": [round(u_f, 3), round(v_f, 3)],
+                "arm": [round(xw, 6), round(yw, 6)],
+                "depth_mm": d_mm,
+                "tag_corner": k,
+            }
+        )
+
+    meta = {
+        "mode": "handeye_official_chain",
+        "tag_edge_m": tag_edge_m,
+        "corners_total": 4,
+        "points_with_depth": len(out),
+        "skipped_no_depth": skipped,
     }
     return out, meta
 

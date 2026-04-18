@@ -217,6 +217,7 @@ label{font-size:13px;color:var(--muted)}
       </p>
       <p style="color:var(--muted);font-size:12px;margin-bottom:8px">
         <b>推荐（双目深度）：AprilTag</b> — 打印与配置 <code>calibration_tag.family</code> 一致的单个 AprilTag（如 36h11）。将 Tag 平放，用 IK 测 <b>Tag 几何中心</b> 的臂坐标，填入「中心 X/Y」「外框边长(mm)」，点「AprilTag 批量采点」。一次检测可得 4 个带深度角点，满足 3D 仿射最少点数。族名、默认边长见 <code>config/default.yaml</code> 的 <code>calibration_tag</code>。
+        <br><span style="font-size:11px">与官方 ROS 标定链对齐时：复制 <code>camera_info.yaml</code> 为 <code>config/camera_info.yaml</code>，配置 <code>calibration_tag.camera_info_file</code>，并用 <code>POST /api/calibrate/tag3d</code> 传 <code>use_handeye:true</code> 与 <code>robot_pose</code>（<code>GetRobotPose</code> 同结构的 position / orientation）。</span>
       </p>
       <div class="btn-row" style="align-items:end">
         <span><label>臂 X</label><br><input type="number" id="calibArmX" value="0" step="0.01" style="width:80px"></span>
@@ -232,9 +233,12 @@ label{font-size:13px;color:var(--muted)}
         <button class="btn btn-success btn-sm" id="btnTag3d">AprilTag 批量采点 (3D)</button>
       </div>
       <p style="color:var(--muted);font-size:11px;margin-top:6px">
-        <b>可选：</b>棋盘格 — 原点为第 1 个内角点，配置 <code>calibration_board</code>。
+        <b>可选：</b>棋盘格 — 内角点列×行与上文「检测方式」<b>共用同一组</b>（改检测区列/行后点「应用」）。原点为第 1 个内角点。方格边长可在下方填写或写在 <code>calibration_board.square_size_mm</code>。
       </p>
-      <div class="btn-row" style="align-items:end;margin-top:4px">
+      <div class="btn-row" style="align-items:end;margin-top:4px;flex-wrap:wrap">
+        <span><label>内角点列（同检测）</label><br><input type="number" id="boardCalibCols" value="5" min="2" max="30" readonly style="width:64px;background:var(--bg);color:var(--muted)" title="与检测方式同步，只读"></span>
+        <span><label>内角点行（同检测）</label><br><input type="number" id="boardCalibRows" value="4" min="2" max="30" readonly style="width:64px;background:var(--bg);color:var(--muted)" title="与检测方式同步，只读"></span>
+        <span><label>方格边长 mm</label><br><input type="number" id="boardSquareMm" value="25" min="1" step="1" style="width:72px" title="单格边长（毫米）"></span>
         <span><label>棋盘原点 X (mm)</label><br><input type="number" id="boardOriginXmm" value="180" step="1" style="width:88px"></span>
         <span><label>棋盘原点 Y (mm)</label><br><input type="number" id="boardOriginYmm" value="0" step="1" style="width:88px"></span>
         <button class="btn btn-outline btn-sm" id="btnBoard3d">棋盘格批量采点 (3D)</button>
@@ -693,6 +697,13 @@ function updateCbParamsVisibility(){
 $('#detectMethod').onchange = updateCbParamsVisibility;
 updateCbParamsVisibility();
 
+function syncBoardCalibFromDetect(){
+  $('#boardCalibCols').value = $('#cbCols').value;
+  $('#boardCalibRows').value = $('#cbRows').value;
+}
+$('#cbCols').addEventListener('input', syncBoardCalibFromDetect);
+$('#cbRows').addEventListener('input', syncBoardCalibFromDetect);
+
 $('#btnApplyDetect').onclick = async () => {
   const method = $('#detectMethod').value;
   const body = { method };
@@ -703,7 +714,10 @@ $('#btnApplyDetect').onclick = async () => {
   try{
     const r = await fetch('/api/config/detect_method',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
     const d = await r.json();
-    if(d.ok) log(`检测方式已切换: ${method}`,'ok');
+    if(d.ok){
+      log(`检测方式已切换: ${method}`,'ok');
+      if(method === 'checkerboard') syncBoardCalibFromDetect();
+    }
     else log(d.error,'err');
   }catch(e){log('错误: '+e,'err')}
 };
@@ -717,6 +731,7 @@ $('#btnApplyDetect').onclick = async () => {
       if(d.checkerboard){
         $('#cbCols').value = d.checkerboard.cols || 5;
         $('#cbRows').value = d.checkerboard.rows || 4;
+        syncBoardCalibFromDetect();
       }
       updateCbParamsVisibility();
     }
@@ -792,20 +807,41 @@ $('#btnTag3d').onclick = async () => {
   }catch(e){ log('错误: '+e,'err'); }
 };
 $('#btnBoard3d').onclick = async () => {
+  if($('#detectMethod').value !== 'checkerboard'){
+    log('请先将「检测方式」选为棋盘格标定板，列×行与实物一致后点「应用」。','err');
+    return;
+  }
+  syncBoardCalibFromDetect();
   const ax = parseFloat($('#boardOriginXmm').value);
   const ay = parseFloat($('#boardOriginYmm').value);
+  const cols = parseInt($('#cbCols').value, 10);
+  const rows = parseInt($('#cbRows').value, 10);
+  const sq = parseFloat($('#boardSquareMm').value);
   if(isNaN(ax)||isNaN(ay)){ log('请填写棋盘原点 X/Y (mm)','err'); return; }
-  log('棋盘格 3D 批量采点…','info');
+  if(isNaN(cols)||isNaN(rows)||cols<2||rows<2){ log('请在上方「检测方式」填写内角点列、行（≥2）并点「应用」。','err'); return; }
+  if(isNaN(sq)||sq<=0){ log('请填写合理的方格边长 (mm)','err'); return; }
+  log(`棋盘格 3D 批量采点 (${cols}×${rows} 内角点，与检测一致)…`,'info');
   try{
     const r = await fetch('/api/calibrate/board3d',{
       method:'POST',
       headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ arm_x_mm: ax, arm_y_mm: ay, include_preview: true })
+      body: JSON.stringify({
+        arm_x_mm: ax,
+        arm_y_mm: ay,
+        square_size_mm: sq,
+        include_preview: true
+      })
     });
     const d = await r.json();
     if(d.ok){
       const m = d.meta||{};
-      log(`棋盘格采点: +${d.added} 点, 累计 ${d.total} (深度有效角点 ${m.points_with_depth}/${m.corners_total})`,'ok');
+      let extra = '';
+      if(m.pattern_autopicked && m.pattern_cols != null){
+        extra = `，自动匹配内角点 ${m.pattern_cols}×${m.pattern_rows}（hint ${(m.pattern_hint||[]).join('×')}，试 ${m.autotry_attempts||'?'} 组）`;
+      } else if(m.autotry_attempts){
+        extra = `，尝试 ${m.autotry_attempts} 组尺寸`;
+      }
+      log(`棋盘格采点: +${d.added} 点, 累计 ${d.total} (深度 ${m.points_with_depth}/${m.corners_total}${extra})`,'ok');
       $('#calibResult').textContent = `棋盘格已添加 ${d.added} 个 3D 约束点，可点「计算标定」`;
       if(d.preview){
         const prev = document.getElementById('board3dPreview');

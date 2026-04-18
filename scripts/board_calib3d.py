@@ -29,6 +29,29 @@ def _sample_depth_mm(depth: np.ndarray | None, cx: int, cy: int, radius: int = 2
     return None
 
 
+def _find_chessboard_corners_gray(
+    gray: np.ndarray,
+    pattern_cols: int,
+    pattern_rows: int,
+) -> np.ndarray | None:
+    """单种内角点尺寸；成功返回亚像素角点，失败 None。"""
+    size = (pattern_cols, pattern_rows)
+    flags_fast = (
+        cv2.CALIB_CB_ADAPTIVE_THRESH
+        | cv2.CALIB_CB_NORMALIZE_IMAGE
+        | cv2.CALIB_CB_FAST_CHECK
+    )
+    flags_full = cv2.CALIB_CB_ADAPTIVE_THRESH | cv2.CALIB_CB_NORMALIZE_IMAGE
+    found, corners = cv2.findChessboardCorners(gray, size, flags_fast)
+    if not found or corners is None:
+        found, corners = cv2.findChessboardCorners(gray, size, flags_full)
+    if not found or corners is None:
+        return None
+    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
+    corners = cv2.cornerSubPix(gray, corners, (5, 5), (-1, -1), criteria)
+    return corners
+
+
 def find_chessboard_corners(
     bgr: np.ndarray,
     pattern_cols: int,
@@ -36,19 +59,51 @@ def find_chessboard_corners(
 ) -> np.ndarray | None:
     """返回 shape (N, 1, 2) float32 亚像素角点；失败返回 None。"""
     gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
-    flags = (
-        cv2.CALIB_CB_ADAPTIVE_THRESH
-        | cv2.CALIB_CB_NORMALIZE_IMAGE
-        | cv2.CALIB_CB_FAST_CHECK
-    )
-    found, corners = cv2.findChessboardCorners(
-        gray, (pattern_cols, pattern_rows), flags
-    )
-    if not found or corners is None:
-        return None
-    criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_MAX_ITER, 30, 0.001)
-    corners = cv2.cornerSubPix(gray, corners, (5, 5), (-1, -1), criteria)
-    return corners
+    return _find_chessboard_corners_gray(gray, pattern_cols, pattern_rows)
+
+
+def find_chessboard_corners_autotry(
+    bgr: np.ndarray,
+    *,
+    hint_cols: int = 5,
+    hint_rows: int = 4,
+    min_inner: int = 3,
+    max_inner: int = 16,
+) -> tuple[np.ndarray, int, int, int] | None:
+    """按优先级自动尝试多组内角点 (宽×高)，与 OpenCV findChessboardCorners 一致。
+
+    先试 hint（及行列互换），再在 [min_inner, max_inner] 内二维枚举。
+    返回 (corners, pattern_cols, pattern_rows, attempts_used)；全失败返回 None。
+    """
+    gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
+    candidates: list[tuple[int, int]] = []
+    seen: set[tuple[int, int]] = set()
+
+    def add(w: int, h: int) -> None:
+        if min_inner <= w <= max_inner and min_inner <= h <= max_inner and (w, h) not in seen:
+            seen.add((w, h))
+            candidates.append((w, h))
+
+    add(hint_cols, hint_rows)
+    add(hint_rows, hint_cols)
+    dist_pairs: list[tuple[int, tuple[int, int]]] = []
+    for w in range(min_inner, max_inner + 1):
+        for h in range(min_inner, max_inner + 1):
+            if (w, h) in seen:
+                continue
+            dist = abs(w - hint_cols) + abs(h - hint_rows)
+            dist_pairs.append((dist, (w, h)))
+    dist_pairs.sort(key=lambda x: (x[0], x[1][0] * x[1][1]))
+    for _, (w, h) in dist_pairs:
+        add(w, h)
+
+    attempts = 0
+    for cols, rows in candidates:
+        attempts += 1
+        corners = _find_chessboard_corners_gray(gray, cols, rows)
+        if corners is not None:
+            return corners, cols, rows, attempts
+    return None
 
 
 def board_corners_to_calib_points(

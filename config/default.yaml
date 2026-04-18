@@ -64,11 +64,14 @@ checkerboard:
   rows: 4
 
 # 棋盘格 3D 批量标定（可选，与 calibration3d 仿射拟合配合）
+# cols/rows 为自动尝试的 hint；实际尺寸在 autotry_min_inner～autotry_max_inner 内枚举
 calibration_board:
   cols: 5
   rows: 4
   square_size_mm: 25
   board_yaw_deg: 0
+  autotry_min_inner: 3
+  autotry_max_inner: 16
 
 # AprilTag 单标记 3D 批量标定（推荐双目深度：一个 Tag 即 4 个约束点）
 # tag_edge_mm：打印图黑色外框边长（毫米，全边长，非模块）
@@ -78,6 +81,8 @@ calibration_tag:
   tag_edge_mm: 40
   tag_id: null
   yaw_deg: 0
+  # 官方手眼矩阵（与 peripherals/camera_info.yaml 一致）；置 null 则仅支持「几何中心 + IK」模式
+  camera_info_file: null
 
 # 黑白标记板(TAG) 检测参数
 tag_detect:
