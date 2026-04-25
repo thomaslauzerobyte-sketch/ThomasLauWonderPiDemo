@@ -1,51 +1,94 @@
 camera:
+  # auto | ros_web | opencv | rpicam | picamera2 | deptrum
+  # ros_web: 从 Docker 容器内的 ROS2 web_video_server 读取画面（推荐，
+  #          当 Docker 已占用深度相机时自动使用此模式）
+  # auto：依次尝试 ros_web → opencv → deptrum → picamera2
   backend: auto
   index: 0
   width: 640
   height: 480
   fps: 12
+  # ROS2 web_video_server 地址（Docker host 网络模式，端口 8080）
   ros_web_video_url: http://localhost:8080
   ros_snapshot_topics:
-  - /depth_cam/rgb/image_raw
+    - /depth_cam/rgb/image_raw
   ros_web_timeout_sec: 4
-  opencv_indices:
-  - 0
-  - 1
-  - 2
-  - 3
-  - 4
-  - 5
+  opencv_indices: [0, 1, 2, 3, 4, 5]
   resolution_mode_index: 2
+
 face_detect:
+  # backend: mediapipe | haar
+  # mediapipe: 精度高（要求 pip install mediapipe）；haar：OpenCV 自带，CPU 友好
   backend: mediapipe
   mediapipe_min_confidence: 0.5
-  mediapipe_model_selection: 0
+  mediapipe_model_selection: 0   # 0=2m 内, 1=5m 内
   haar_scale_factor: 1.1
   haar_min_neighbors: 5
   haar_min_size: 60
+
 face_tracking:
+  # 控制模式：
+  #   joints — 启动时求一次 IK 锁定肩/肘/腕基线；之后只动底座(yaw)+腕pitch 两个舵机，
+  #            响应最快，且不会因为 IK 求解失败而卡住（推荐）
+  #   ik     — 每帧都用 (x, y, z, pitch) 调用 /ik_move；某些极端 pitch 会 IK 失败
+  mode: joints
+
+  # joints 模式专用：把 yaw/pitch 角度直接换算成舵机脉宽偏移
+  joints:
+    base_servo: 6                  # 底座 yaw 舵机 id
+    pitch_servo: 3                 # 腕 pitch 舵机 id（控制摄像头俯仰）
+    yaw_pulse_per_deg: 5.5556      # ArmPi: 1° ≈ 5.556 脉宽（±90° = ±500）
+    pitch_pulse_per_deg: 5.5556    # 若方向反了改成 -5.5556
+
+  # 多张人脸时挑选哪一个：largest=最近脸；center=最靠近画面中心
   pick: largest
-  deadzone_px: 25
-  smoothing: 0.5
+  # 像素死区（误差小于此值不动作；越小响应越快越抖）
+  deadzone_px: 20
+  # EMA 平滑：1.0=不平滑/最快；0=关闭整段平滑（同样不平滑）；
+  # 0.5 表示新误差权重 50%、旧权重 50%。0.7 是速度/平滑的折中
+  smoothing: 0.7
+  # 连续 N 帧 / T 秒没人脸则归位 home_pose
   lost_frames_to_home: 30
   lost_seconds_to_home: 3.0
-  loop_hz: 10
+  # 控制循环频率（Hz）。IK 异步发送可较快，但不要把舵机最大角速度推太高
+  loop_hz: 15
+
+  # 估计水平/垂直视场角（度）。Pi 摄像头一般 60°/45° 左右
   fov_h_deg: 60
   fov_v_deg: 45
-  yaw_kp: 0.45
-  pitch_kp: 0.45
+
+  # 比例增益（误差→角度）。越大越快但越易过冲
+  yaw_kp: 0.6
+  pitch_kp: 0.6
+
+  # 角度限制（度）
   yaw_min_deg: -75
-  yaw_max_deg: 75
+  yaw_max_deg:  75
   pitch_min_deg: -45
-  pitch_max_deg: 35
-  max_yaw_step_deg: 8
+  pitch_max_deg:  35
+
+  # 单步最大角增量。上限约束最大角速度 = max_step * loop_hz：
+  # yaw  = 6° × 15Hz = 90°/sec  · pitch = 6° × 15Hz = 90°/sec
+  max_yaw_step_deg: 6
   max_pitch_step_deg: 6
+
+  # 启动时求 IK 用的“注视基线”位姿
+  # joints 模式只在 start 时用一次（拿 IK 解出的脉宽锁定肩/肘/腕基线）；
+  # ik 模式则每帧都用这套 (x, y, z) 配 pitch
+  # ⚠ z 太低（<=0.10）pitch 向上时容易 IK 失败 → 0.15 较稳
   home_pose:
     x: 0.18
-    y: 0
-    z: 0.1
-    pitch: -10
-  move_duration: 0.12
+    y: 0.0
+    z: 0.15
+    pitch: 0.0
+
+  # 单次 IK 移动时长（秒）。略小于循环周期 (1/loop_hz=66ms)，留重叠避免顿挫
+  move_duration: 0.08
+
+  # 启动追踪时一次性归位到 home_pose 用的时长（秒），与循环 move_duration 解耦
+  # 设大点（1~2s）避免 “一按开始就猛低头”
+  start_home_duration: 1.5
+
 arm:
   driver: hiwonder
   mock: false
@@ -53,9 +96,7 @@ arm:
   ik_pitch: -10.0
   grip_open_pulse: 100
   grip_close_pulse: 700
-  move_duration: 0.12
-  step_delay_sec: 0.0
-  servo_invert:
-  - 5
+  move_duration: 0.06
+  servo_invert: [5]
   image_width: 640
   image_height: 480

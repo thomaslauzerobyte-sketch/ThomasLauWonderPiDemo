@@ -104,7 +104,9 @@ class CameraManager:
         self._ros_http_timeout: float = 4.0
         self._cached_frame: np.ndarray | None = None
         self._cached_t: float = 0.0
-        self._cache_ttl: float = 0.04
+        # 80ms ≈ 12 FPS：人脸追踪不需要更高，足以让 MJPEG 流与
+        # tracker 循环大多数情况下共用同一帧，避免互相抢锁。
+        self._cache_ttl: float = 0.08
 
     def _open(self, cfg: dict[str, Any]) -> None:
         cam = cfg["camera"]

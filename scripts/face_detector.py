@@ -10,6 +10,7 @@ sorted by score descending (mediapipe) or area descending (haar).
 
 from __future__ import annotations
 
+import threading
 from dataclasses import dataclass
 from typing import Any
 
@@ -30,6 +31,8 @@ class _HaarBackend:
             raise RuntimeError(f"无法加载 Haar 级联: {path}")
 
     def detect(self, bgr: np.ndarray) -> list[dict[str, Any]]:
+        if bgr is None or not isinstance(bgr, np.ndarray) or bgr.size == 0:
+            return []
         gray = cv2.cvtColor(bgr, cv2.COLOR_BGR2GRAY)
         gray = cv2.equalizeHist(gray)
         faces = self._cascade.detectMultiScale(
@@ -63,12 +66,18 @@ class _MediapipeBackend:
             model_selection=int(self.model_selection),
             min_detection_confidence=float(self.min_confidence),
         )
+        # mediapipe 的 FaceDetection 内部 graph 不是线程安全的，
+        # 多线程并发 process() 会触发 "Empty packets are not allowed"。
+        self._lock = threading.Lock()
 
     def detect(self, bgr: np.ndarray) -> list[dict[str, Any]]:
+        if bgr is None or not isinstance(bgr, np.ndarray) or bgr.size == 0:
+            return []
         h, w = bgr.shape[:2]
         rgb = cv2.cvtColor(bgr, cv2.COLOR_BGR2RGB)
         rgb.flags.writeable = False
-        res = self._mp_fd.process(rgb)
+        with self._lock:
+            res = self._mp_fd.process(rgb)
         out: list[dict[str, Any]] = []
         if not res.detections:
             return out
@@ -122,9 +131,15 @@ class FaceDetector:
         return impl
 
     def detect(self, bgr: np.ndarray) -> list[dict[str, Any]]:
+        if bgr is None or not isinstance(bgr, np.ndarray) or bgr.size == 0:
+            return []
         if self._impl is None:
             self._impl = self._build()
-        return self._impl.detect(bgr)
+        try:
+            return self._impl.detect(bgr)
+        except Exception as e:
+            print(f"[face] detect 异常 ({self._effective_backend}): {e}")
+            return []
 
     @property
     def effective_backend(self) -> str:

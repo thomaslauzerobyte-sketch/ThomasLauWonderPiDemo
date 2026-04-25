@@ -119,6 +119,7 @@ footer{padding:12px 22px;color:var(--muted);font-size:12px;border-top:1px solid 
         <div class="k">画面尺寸</div><div class="v" id="s-size">—</div>
         <div class="k">当前 yaw / pitch (°)</div><div class="v" id="s-angle">—</div>
         <div class="k">FPS / 丢失帧</div><div class="v" id="s-fps">—</div>
+        <div class="k">IK 状态 (在飞/丢弃/失败)</div><div class="v" id="s-ik">—</div>
         <div class="k">最近 IK 脉冲</div><div class="v" id="s-pulse">—</div>
         <div class="k">最近错误</div><div class="v err" id="s-err">—</div>
       </div>
@@ -165,6 +166,23 @@ footer{padding:12px 22px;color:var(--muted);font-size:12px;border-top:1px solid 
     <div class="card">
       <h3>追踪参数</h3>
       <div class="form-row">
+        <label>控制模式</label>
+        <select id="cfg-mode">
+          <option value="joints">joints (推荐, 不走 IK)</option>
+          <option value="ik">ik (每帧 IK_move)</option>
+        </select>
+        <span class="hint">joints：start 时锁定肩/肘/腕基线，之后只动底座+腕 pitch；上下/左右都很快，且不会因 IK 失败卡住</span>
+      </div>
+      <div class="form-row" data-mode="joints">
+        <label>pitch 方向</label>
+        <select id="cfg-pitch-sign"><option value="1">+ (默认)</option><option value="-1">− (反向)</option></select>
+        <span class="hint">点开始追踪后若发现"低头变抬头"就切换</span>
+      </div>
+      <div class="form-row" data-mode="joints">
+        <label>yaw 方向</label>
+        <select id="cfg-yaw-sign"><option value="1">+ (默认)</option><option value="-1">− (反向)</option></select>
+      </div>
+      <div class="form-row">
         <label>挑选策略</label>
         <select id="cfg-pick"><option value="largest">largest</option><option value="center">center</option></select>
       </div>
@@ -209,11 +227,17 @@ footer{padding:12px 22px;color:var(--muted);font-size:12px;border-top:1px solid 
 
       <div class="form-row">
         <label>home x / y / z (m)</label>
-        <input type="text" id="cfg-home-xyz" placeholder="0.18, 0.0, 0.10">
+        <input type="text" id="cfg-home-xyz" placeholder="0.18, 0.0, 0.15">
+        <span class="hint">joints 模式只在 start 时用一次（锁定肩/肘/腕基线）；ik 模式则每帧使用。z≤0.10 会让 pitch 向上时 IK 失败</span>
       </div>
       <div class="form-row">
         <label>home pitch (°)</label>
         <input type="number" step="1" min="-90" max="90" id="cfg-home-pitch">
+      </div>
+      <div class="form-row">
+        <label>启动归位时长 (s)</label>
+        <input type="number" step="0.1" min="0.1" max="5" id="cfg-start-home-dur">
+        <span class="hint">点“开始追踪”后慢动到 home 的总时长，避免瞬间砸下来</span>
       </div>
       <div class="form-row">
         <label>yaw 范围 (°)</label>
@@ -313,6 +337,8 @@ async function refreshTrackerStatus() {
   $('s-size').textContent = s.img_size ? `${s.img_size[0]}×${s.img_size[1]}` : '—';
   $('s-angle').textContent = `yaw=${(s.yaw_deg ?? 0).toFixed(1)}  pitch=${(s.pitch_deg ?? 0).toFixed(1)}`;
   $('s-fps').textContent = `${(s.fps ?? 0).toFixed(1)} fps  ·  lost=${s.lost_frames ?? 0}`;
+  $('s-ik').textContent = `inflight=${s.ik_inflight ?? 0}  ·  dropped=${s.ik_dropped ?? 0}  ·  failed=${s.ik_failed ?? 0}`;
+  $('s-ik').className = 'v ' + ((s.ik_failed ?? 0) > 0 ? 'warn' : '');
   $('s-pulse').textContent = s.last_move_pulses ? JSON.stringify(s.last_move_pulses) : '—';
   $('s-err').textContent = s.last_error || '—';
   $('pill-fps').querySelector('span').textContent = `FPS ${(s.fps ?? 0).toFixed(1)}`;
@@ -395,6 +421,14 @@ function applyBackendVisibility() {
 }
 $('cfg-fd-backend').addEventListener('change', applyBackendVisibility);
 
+function applyModeVisibility() {
+  const m = $('cfg-mode').value;
+  document.querySelectorAll('[data-mode]').forEach(el => {
+    el.style.display = (el.dataset.mode === m) ? '' : 'none';
+  });
+}
+$('cfg-mode').addEventListener('change', applyModeVisibility);
+
 async function loadConfigToForm() {
   const cfg = await api('/api/config');
   const fd = cfg.face_detect || {};
@@ -407,6 +441,12 @@ async function loadConfigToForm() {
   applyBackendVisibility();
 
   const t = cfg.face_tracking || {};
+  $('cfg-mode').value     = t.mode || 'joints';
+  applyModeVisibility();
+  const j = t.joints || {};
+  const ppd = 5.5556;
+  $('cfg-pitch-sign').value = (j.pitch_pulse_per_deg ?? ppd) >= 0 ? '1' : '-1';
+  $('cfg-yaw-sign').value   = (j.yaw_pulse_per_deg   ?? ppd) >= 0 ? '1' : '-1';
   $('cfg-pick').value     = t.pick || 'largest';
   $('cfg-hz').value       = t.loop_hz ?? 10;
   $('cfg-deadzone').value = t.deadzone_px ?? 25;
@@ -418,8 +458,9 @@ async function loadConfigToForm() {
   $('cfg-maxyaw').value   = t.max_yaw_step_deg ?? 8;
   $('cfg-maxpitch').value = t.max_pitch_step_deg ?? 6;
   const hp = t.home_pose || {};
-  fillTuple('cfg-home-xyz', [hp.x ?? 0.18, hp.y ?? 0.0, hp.z ?? 0.10]);
-  $('cfg-home-pitch').value = hp.pitch ?? -10.0;
+  fillTuple('cfg-home-xyz', [hp.x ?? 0.18, hp.y ?? 0.0, hp.z ?? 0.15]);
+  $('cfg-home-pitch').value = hp.pitch ?? 0.0;
+  $('cfg-start-home-dur').value = t.start_home_duration ?? 1.5;
   fillTuple('cfg-yaw-range', [t.yaw_min_deg ?? -75, t.yaw_max_deg ?? 75]);
   fillTuple('cfg-pitch-range', [t.pitch_min_deg ?? -45, t.pitch_max_deg ?? 35]);
 }
@@ -438,6 +479,13 @@ function buildPatch() {
       mediapipe_model_selection: parseInt($('cfg-mp-model').value),
     },
     face_tracking: {
+      mode: $('cfg-mode').value,
+      joints: {
+        base_servo: 6,
+        pitch_servo: 3,
+        yaw_pulse_per_deg:   parseFloat($('cfg-yaw-sign').value)   * 5.5556,
+        pitch_pulse_per_deg: parseFloat($('cfg-pitch-sign').value) * 5.5556,
+      },
       pick: $('cfg-pick').value,
       loop_hz: parseInt($('cfg-hz').value),
       deadzone_px: parseFloat($('cfg-deadzone').value),
@@ -449,11 +497,12 @@ function buildPatch() {
       max_yaw_step_deg: parseFloat($('cfg-maxyaw').value),
       max_pitch_step_deg: parseFloat($('cfg-maxpitch').value),
       home_pose: {
-        x: xyz[0] ?? 0.18, y: xyz[1] ?? 0.0, z: xyz[2] ?? 0.10,
+        x: xyz[0] ?? 0.18, y: xyz[1] ?? 0.0, z: xyz[2] ?? 0.15,
         pitch: parseFloat($('cfg-home-pitch').value),
       },
       yaw_min_deg: yawR[0] ?? -75, yaw_max_deg: yawR[1] ?? 75,
       pitch_min_deg: piR[0] ?? -45, pitch_max_deg: piR[1] ?? 35,
+      start_home_duration: parseFloat($('cfg-start-home-dur').value),
     },
   };
 }
