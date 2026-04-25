@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>WonderPi 控制台</title>
+<title>WonderPi 人脸追踪</title>
 <style>
 *{margin:0;padding:0;box-sizing:border-box}
 :root{
@@ -12,1254 +12,478 @@
   --danger:#ff6b6b;--warn:#ffd43b;--radius:10px;
 }
 body{font-family:'Segoe UI','PingFang SC','Noto Sans SC',sans-serif;background:var(--bg);color:var(--text);line-height:1.5;min-height:100vh}
-a{color:var(--accent);text-decoration:none}
 
-.top-bar{display:flex;align-items:center;gap:12px;padding:14px 24px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:90}
-.top-bar h1{font-size:18px;font-weight:700;letter-spacing:.5px}
-.top-bar .dot{width:8px;height:8px;border-radius:50%;background:var(--danger);flex-shrink:0;transition:background .3s}
-.top-bar .dot.on{background:var(--accent2)}
-.top-bar .status{font-size:13px;color:var(--muted)}
+.top-bar{display:flex;align-items:center;gap:14px;padding:14px 22px;background:var(--surface);border-bottom:1px solid var(--border);position:sticky;top:0;z-index:90;flex-wrap:wrap}
+.top-bar h1{font-size:17px;font-weight:700;letter-spacing:.4px}
+.top-bar .pill{display:inline-flex;align-items:center;gap:6px;padding:3px 10px;border-radius:99px;font-size:12px;background:var(--card);border:1px solid var(--border);color:var(--muted)}
+.top-bar .pill .dot{width:7px;height:7px;border-radius:50%;background:var(--danger)}
+.top-bar .pill.on{color:var(--accent2);border-color:var(--accent2)}
+.top-bar .pill.on .dot{background:var(--accent2)}
+.top-bar .pill.warn{color:var(--warn);border-color:var(--warn)}
+.top-bar .pill.warn .dot{background:var(--warn)}
+.top-bar .spacer{flex:1}
 
-.layout{display:grid;grid-template-columns:1fr 360px;gap:0;min-height:calc(100vh - 52px)}
-@media(max-width:900px){.layout{grid-template-columns:1fr}}
+.layout{display:grid;grid-template-columns:1fr 380px;gap:0;min-height:calc(100vh - 53px)}
+@media(max-width:960px){.layout{grid-template-columns:1fr}}
 
-.main{padding:20px 24px;overflow-y:auto}
-.panel{padding:16px 20px;overflow-y:auto;background:var(--surface);border-left:1px solid var(--border)}
-@media(max-width:900px){.panel{border-left:none;border-top:1px solid var(--border)}}
+.main{padding:18px 22px;overflow-y:auto}
+.panel{padding:16px 18px;overflow-y:auto;background:var(--surface);border-left:1px solid var(--border)}
+@media(max-width:960px){.panel{border-left:none;border-top:1px solid var(--border)}}
 
-.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:16px;margin-bottom:16px}
-.card h3{font-size:14px;text-transform:uppercase;letter-spacing:1px;color:var(--muted);margin-bottom:10px}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);padding:14px 16px;margin-bottom:14px}
+.card h3{font-size:12px;text-transform:uppercase;letter-spacing:1.2px;color:var(--muted);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between}
 
-.video-box{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:var(--radius);overflow:hidden;margin-bottom:16px}
-.video-box img,.video-box video{width:100%;height:100%;object-fit:contain}
-.video-box .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:15px;pointer-events:none}
-.video-box .badge{position:absolute;top:8px;right:8px;padding:2px 8px;border-radius:4px;font-size:11px;font-weight:600;background:var(--danger);color:#fff}
+.video-box{position:relative;width:100%;aspect-ratio:4/3;background:#000;border-radius:var(--radius);overflow:hidden;margin-bottom:14px}
+.video-box img{width:100%;height:100%;object-fit:contain;display:block}
+.video-box .overlay{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--muted);font-size:14px;pointer-events:none;background:rgba(0,0,0,.55)}
+.video-box .badge{position:absolute;top:8px;left:8px;padding:3px 9px;border-radius:4px;font-size:11px;font-weight:600;background:rgba(0,0,0,.6);color:#fff}
+.video-box .badge.live{background:var(--danger)}
 
-.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 16px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:all .15s;color:#fff}
+.btn{display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:none;border-radius:6px;font-size:13px;font-weight:600;cursor:pointer;transition:filter .15s, background .15s;color:#fff}
 .btn-primary{background:var(--accent)}
-.btn-primary:hover{background:#6ba0ff}
-.btn-success{background:var(--accent2);color:#111}
-.btn-success:hover{background:#5ce0b8}
+.btn-primary:hover{filter:brightness(1.1)}
+.btn-success{background:var(--accent2);color:#0c1117}
+.btn-success:hover{filter:brightness(1.1)}
 .btn-danger{background:var(--danger)}
-.btn-danger:hover{background:#ff8787}
+.btn-danger:hover{filter:brightness(1.1)}
 .btn-outline{background:transparent;border:1px solid var(--border);color:var(--text)}
 .btn-outline:hover{border-color:var(--accent);color:var(--accent)}
-.btn:disabled{opacity:.4;cursor:not-allowed}
+.btn:disabled{opacity:.45;cursor:not-allowed;filter:grayscale(.4)}
 .btn-sm{padding:5px 10px;font-size:12px}
 
-.btn-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.btn-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:6px}
 
-input[type=number],input[type=text],select{background:var(--surface);border:1px solid var(--border);color:var(--text);padding:6px 10px;border-radius:6px;font-size:13px;width:80px}
-input[type=text]{width:auto;min-width:120px}
-label{font-size:13px;color:var(--muted)}
+.kv{display:grid;grid-template-columns:auto 1fr;gap:6px 14px;font-size:13px}
+.kv .k{color:var(--muted)}
+.kv .v{color:var(--text);font-family:ui-monospace,'Cascadia Code',monospace;word-break:break-all}
+.kv .v.ok{color:var(--accent2)}
+.kv .v.warn{color:var(--warn)}
+.kv .v.err{color:var(--danger)}
 
-.log{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:'Fira Code','Cascadia Code',monospace;font-size:12px;max-height:240px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:var(--muted);line-height:1.6}
-.log .ok{color:var(--accent2)}.log .err{color:var(--danger)}.log .info{color:var(--accent)}
+.form-row{display:grid;grid-template-columns:1fr 110px;gap:10px;align-items:center;margin:6px 0}
+.form-row label{font-size:13px;color:var(--muted)}
+.form-row input,.form-row select{background:var(--bg);border:1px solid var(--border);color:var(--text);padding:5px 8px;border-radius:6px;font-size:13px;width:100%;font-family:inherit}
+.form-row input[type=range]{padding:0}
+.form-row .hint{grid-column:1/-1;font-size:11px;color:var(--muted);margin-top:-2px;line-height:1.4}
 
-.thumb-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(90px,1fr));gap:6px}
-.thumb-grid img{width:100%;aspect-ratio:4/3;object-fit:cover;border-radius:4px;cursor:pointer;border:2px solid transparent;transition:border .15s}
-.thumb-grid img:hover{border-color:var(--accent)}
-.thumb-grid img.active{border-color:var(--accent2)}
+.log{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:ui-monospace,'Cascadia Code',monospace;font-size:12px;max-height:200px;overflow-y:auto;white-space:pre-wrap;word-break:break-all;color:var(--muted);line-height:1.6}
+.log .ok{color:var(--accent2)}
+.log .err{color:var(--danger)}
+.log .info{color:var(--accent)}
+.log .warn{color:var(--warn)}
 
-.list-item{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:6px;cursor:pointer;transition:background .12s;font-size:13px}
-.list-item:hover{background:var(--bg)}
-.list-item .meta{color:var(--muted);font-size:12px}
+.divider{height:1px;background:var(--border);margin:12px -16px}
 
-.tabs{display:flex;gap:0;margin-bottom:16px;border-bottom:2px solid var(--border)}
-.tab{padding:8px 16px;font-size:13px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-2px;transition:all .15s}
-.tab.active{color:var(--accent);border-color:var(--accent)}
-
-.result-json{background:var(--bg);border:1px solid var(--border);border-radius:6px;padding:10px;font-family:monospace;font-size:12px;max-height:180px;overflow:auto;color:var(--accent2)}
-
-.fade-in{animation:fadeIn .3s ease}
-@keyframes fadeIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
-
-.step-row{display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border);font-size:13px}
-.step-row .num{width:24px;height:24px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:700;flex-shrink:0}
-.step-row .num.done{background:var(--accent2);color:#111}
-.step-row .num.todo{background:var(--border);color:var(--muted)}
-.step-row .num.active{background:var(--accent);color:#fff}
-.calib-table{width:100%;border-collapse:collapse;font-size:12px;margin:8px 0}
-.calib-table th,.calib-table td{padding:4px 8px;text-align:left;border-bottom:1px solid var(--border)}
-.calib-table th{color:var(--muted);font-weight:600}
-.teach-point{padding:10px;border-radius:6px;background:var(--bg);border:1px solid var(--border);margin-bottom:8px;font-size:13px}
-.teach-point .label{color:var(--muted);font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px}
+footer{padding:12px 22px;color:var(--muted);font-size:12px;border-top:1px solid var(--border);text-align:center}
 </style>
 </head>
 <body>
 
 <div class="top-bar">
-  <div class="dot" id="camDot"></div>
-  <h1>WonderPi 控制台</h1>
-  <span class="status" id="camStatus">相机未连接</span>
-  <span style="flex:1"></span>
-  <button class="btn btn-primary btn-sm" id="btnCamOpen">打开相机</button>
-  <button class="btn btn-danger btn-sm" id="btnCamClose" disabled>关闭相机</button>
+  <h1>👤 WonderPi 人脸追踪</h1>
+  <span class="pill" id="pill-cam"><span class="dot"></span><span>相机 …</span></span>
+  <span class="pill" id="pill-arm"><span class="dot"></span><span>arm_bridge …</span></span>
+  <span class="pill" id="pill-track"><span class="dot"></span><span>追踪 …</span></span>
+  <span class="pill" id="pill-face"><span class="dot"></span><span>检测器 …</span></span>
+  <div class="spacer"></div>
+  <span class="pill" id="pill-fps"><span>FPS —</span></span>
 </div>
 
 <div class="layout">
-<!-- ─── MAIN AREA ──────────────────────────────── -->
-<div class="main">
+  <div class="main">
 
-  <div class="tabs">
-    <div class="tab active" data-tab="live">实时预览</div>
-    <div class="tab" data-tab="videos">视频管理</div>
-    <div class="tab" data-tab="frames">帧管理</div>
-    <div class="tab" data-tab="teach">示教学习</div>
-    <div class="tab" data-tab="pipeline">一键流水线</div>
-  </div>
-
-  <!-- Live -->
-  <div id="tab-live" class="fade-in">
-    <div class="video-box" id="streamBox">
-      <img id="streamImg" style="display:none">
-      <div class="overlay" id="streamPlaceholder">打开相机后显示实时画面</div>
-      <div class="badge" id="recBadge" style="display:none">● REC</div>
-    </div>
-    <div class="btn-row">
-      <button class="btn btn-success" id="btnSnapshot">抓拍一帧</button>
-      <button class="btn btn-primary" id="btnSnapInfer">抓拍 + 识别</button>
-      <span style="margin-left:auto;display:flex;align-items:center;gap:6px">
-        <label>录制秒数</label>
-        <input type="number" id="recSec" value="10" min="1" max="300" style="width:64px">
-        <button class="btn btn-danger" id="btnRecord">开始录制</button>
-      </span>
-    </div>
-    <div id="snapResult" style="display:none" class="card fade-in">
-      <h3>抓拍结果</h3>
-      <img id="snapImg" style="max-width:100%;border-radius:6px;margin-bottom:8px">
-      <div class="result-json" id="snapDets"></div>
-    </div>
-  </div>
-
-  <!-- Videos -->
-  <div id="tab-videos" style="display:none" class="fade-in">
-    <div class="btn-row">
-      <button class="btn btn-outline btn-sm" onclick="loadVideos()">刷新列表</button>
-    </div>
     <div class="card">
-      <h3>已录制视频</h3>
-      <div id="videoList"></div>
-    </div>
-    <div id="videoPreview" style="display:none" class="card">
-      <h3>预览</h3>
-      <video id="videoPlayer" controls style="width:100%;border-radius:6px"></video>
-      <div class="btn-row" style="margin-top:10px">
-        <label>拆帧步长</label>
-        <input type="number" id="extractStep" value="1" min="1" max="100" style="width:64px">
-        <button class="btn btn-primary btn-sm" id="btnExtract">拆帧</button>
+      <h3>实时画面 <span style="color:var(--muted);font-weight:500;text-transform:none;letter-spacing:0">绿框=主目标 · 灰框=其它脸</span></h3>
+      <div class="video-box" id="video-box">
+        <span class="badge" id="video-badge">未连接</span>
+        <img id="video" alt="">
+        <div class="overlay" id="video-overlay">点击「打开相机」开始</div>
       </div>
-    </div>
-  </div>
-
-  <!-- Frames -->
-  <div id="tab-frames" style="display:none" class="fade-in">
-    <div class="btn-row">
-      <button class="btn btn-outline btn-sm" onclick="loadFrameDirs()">刷新</button>
-    </div>
-    <div class="card">
-      <h3>帧目录</h3>
-      <div id="frameDirList"></div>
-    </div>
-    <div id="frameDetail" style="display:none" class="card fade-in">
-      <h3 id="frameDirTitle">帧</h3>
-      <div class="thumb-grid" id="frameGrid"></div>
-      <div class="btn-row" style="margin-top:10px">
-        <button class="btn btn-primary btn-sm" id="btnInferDir">批量识别本目录</button>
-      </div>
-    </div>
-    <div id="inferResult" style="display:none" class="card fade-in">
-      <h3>识别结果</h3>
-      <img id="inferImg" style="max-width:100%;border-radius:6px;margin-bottom:8px">
-      <div class="result-json" id="inferJson"></div>
-      <div class="btn-row" style="margin-top:8px">
-        <button class="btn btn-success btn-sm" id="btnArmFromInfer">发送到机械臂</button>
-      </div>
-    </div>
-  </div>
-
-  <!-- Teach -->
-  <div id="tab-teach" style="display:none" class="fade-in">
-    <div class="video-box">
-      <img id="teachStream" style="display:none">
-      <div class="overlay" id="teachPlaceholder">打开相机后显示目标检测画面</div>
-    </div>
-
-    <!-- Detection Method -->
-    <div class="card">
-      <h3>检测方式</h3>
-      <div class="btn-row" style="align-items:end">
-        <span><label>检测方法</label><br>
-          <select id="detectMethod" style="width:160px">
-            <option value="blue">蓝色 HSV</option>
-            <option value="checkerboard">棋盘格标定板</option>
-            <option value="tag" selected>黑白标记板 (TAG)</option>
-          </select>
-        </span>
-        <span id="cbParamsGroup">
-          <label>内角点列×行</label><br>
-          <span style="display:flex;gap:4px;align-items:center">
-            <input type="number" id="cbCols" value="5" min="2" max="20" style="width:52px">
-            ×
-            <input type="number" id="cbRows" value="4" min="2" max="20" style="width:52px">
-          </span>
-        </span>
-        <button class="btn btn-outline btn-sm" id="btnApplyDetect">应用</button>
-      </div>
-    </div>
-
-    <!-- Calibration -->
-    <div class="card">
-      <h3>1. 工作区标定</h3>
-      <p style="color:var(--muted);font-size:13px;margin-bottom:8px">
-        将目标物体依次放到 4 个已知臂坐标位置，每次输入坐标后点击「记录」。
-      </p>
-      <p style="color:var(--muted);font-size:12px;margin-bottom:8px">
-        <b>推荐（双目深度）：AprilTag</b> — 打印与配置 <code>calibration_tag.family</code> 一致的单个 AprilTag（如 36h11）。将 Tag 平放，用 IK 测 <b>Tag 几何中心</b> 的臂坐标，填入「中心 X/Y」「外框边长(mm)」，点「AprilTag 批量采点」。一次检测可得 4 个带深度角点，满足 3D 仿射最少点数。族名、默认边长见 <code>config/default.yaml</code> 的 <code>calibration_tag</code>。
-        <br><span style="font-size:11px">与官方 ROS 标定链对齐时：复制 <code>camera_info.yaml</code> 为 <code>config/camera_info.yaml</code>，配置 <code>calibration_tag.camera_info_file</code>，并用 <code>POST /api/calibrate/tag3d</code> 传 <code>use_handeye:true</code> 与 <code>robot_pose</code>（<code>GetRobotPose</code> 同结构的 position / orientation）。</span>
-      </p>
-      <div class="btn-row" style="align-items:end">
-        <span><label>臂 X</label><br><input type="number" id="calibArmX" value="0" step="0.01" style="width:80px"></span>
-        <span><label>臂 Y</label><br><input type="number" id="calibArmY" value="0" step="0.01" style="width:80px"></span>
-        <button class="btn btn-primary btn-sm" id="btnCalibPoint">记录标定点</button>
-        <button class="btn btn-outline btn-sm" id="btnCalibReset">重置</button>
-        <button class="btn btn-success btn-sm" id="btnCalibCompute" disabled>计算标定</button>
-      </div>
-      <div class="btn-row" style="align-items:end;margin-top:8px;flex-wrap:wrap">
-        <span><label>Tag 中心 X (mm)</label><br><input type="number" id="tagCenterXmm" value="180" step="1" style="width:88px"></span>
-        <span><label>Tag 中心 Y (mm)</label><br><input type="number" id="tagCenterYmm" value="0" step="1" style="width:88px"></span>
-        <span><label>Tag 外框边长 mm</label><br><input type="number" id="tagEdgeMm" value="40" step="1" min="5" style="width:88px"></span>
-        <button class="btn btn-success btn-sm" id="btnTag3d">AprilTag 批量采点 (3D)</button>
-      </div>
-      <p style="color:var(--muted);font-size:11px;margin-top:6px">
-        <b>可选：</b>棋盘格 — 内角点列×行与上文「检测方式」<b>共用同一组</b>（改检测区列/行后点「应用」）。原点为第 1 个内角点。方格边长可在下方填写或写在 <code>calibration_board.square_size_mm</code>。
-      </p>
-      <div class="btn-row" style="align-items:end;margin-top:4px;flex-wrap:wrap">
-        <span><label>内角点列（同检测）</label><br><input type="number" id="boardCalibCols" value="5" min="2" max="30" readonly style="width:64px;background:var(--bg);color:var(--muted)" title="与检测方式同步，只读"></span>
-        <span><label>内角点行（同检测）</label><br><input type="number" id="boardCalibRows" value="4" min="2" max="30" readonly style="width:64px;background:var(--bg);color:var(--muted)" title="与检测方式同步，只读"></span>
-        <span><label>方格边长 mm</label><br><input type="number" id="boardSquareMm" value="25" min="1" step="1" style="width:72px" title="单格边长（毫米）"></span>
-        <span><label>棋盘原点 X (mm)</label><br><input type="number" id="boardOriginXmm" value="180" step="1" style="width:88px"></span>
-        <span><label>棋盘原点 Y (mm)</label><br><input type="number" id="boardOriginYmm" value="0" step="1" style="width:88px"></span>
-        <button class="btn btn-outline btn-sm" id="btnBoard3d">棋盘格批量采点 (3D)</button>
-      </div>
-      <div id="calibInfo" style="margin-top:8px">
-        <table class="calib-table">
-          <thead><tr><th>#</th><th>像素 (u, v)</th><th>臂坐标 (x, y)</th></tr></thead>
-          <tbody id="calibTableBody"></tbody>
-        </table>
-      </div>
-      <div id="calibResult" style="font-size:12px;color:var(--accent2);margin-top:4px"></div>
-      <img id="board3dPreview" alt="标定检测预览" style="display:none;max-width:100%;margin-top:8px;border-radius:6px;border:1px solid var(--border)">
-    </div>
-
-    <!-- Teach record -->
-    <div class="card">
-      <h3>2. 示教录制</h3>
-      <p style="color:var(--muted);font-size:12px;margin-bottom:10px">
-        可先用「IK 移动测试」确认坐标正确，再填入下方。典型范围: X=50~300, Y=-200~200 (mm)
-      </p>
-      <div class="step-row">
-        <div class="num" id="teachStep1Num">1</div>
-        <span style="flex:1">拾取位置</span>
-        <span style="display:flex;align-items:end;gap:4px;font-size:12px">
-          <span><label>X</label><br><input type="number" id="pickArmX" value="180" step="1" style="width:68px"></span>
-          <span><label>Y</label><br><input type="number" id="pickArmY" value="0" step="1" style="width:68px"></span>
-        </span>
-        <button class="btn btn-primary btn-sm" id="btnTeachPick">记录拾取点</button>
-      </div>
-      <div id="teachPickInfo" class="teach-point" style="display:none">
-        <div class="label">拾取点</div>
-        <span id="teachPickText"></span>
-      </div>
-      <div class="step-row">
-        <div class="num" id="teachStep2Num">2</div>
-        <span style="flex:1">放置位置</span>
-        <span style="display:flex;align-items:end;gap:4px;font-size:12px">
-          <span><label>X</label><br><input type="number" id="placeArmX" value="180" step="1" style="width:68px"></span>
-          <span><label>Y</label><br><input type="number" id="placeArmY" value="100" step="1" style="width:68px"></span>
-        </span>
-        <button class="btn btn-primary btn-sm" id="btnTeachPlace">记录放置点</button>
-      </div>
-      <div id="teachPlaceInfo" class="teach-point" style="display:none">
-        <div class="label">放置点</div>
-        <span id="teachPlaceText"></span>
-      </div>
-      <div id="teachMsg" style="display:none;padding:6px 10px;border-radius:6px;font-size:12px;margin-top:4px"></div>
-      <div class="step-row" style="border-bottom:none">
-        <div class="num" id="teachStep3Num">3</div>
-        <span>任务名称</span>
-        <input type="text" id="teachTaskName" value="pick_target" style="flex:1;min-width:120px">
-        <button class="btn btn-success btn-sm" id="btnTeachSave" disabled>保存任务</button>
-      </div>
-    </div>
-
-    <!-- Arm Quick Actions -->
-    <div class="card">
-      <h3>3. 机械臂操作</h3>
       <div class="btn-row">
-        <button class="btn btn-primary btn-sm" onclick="armHome()">回零位</button>
-        <button class="btn btn-success btn-sm" onclick="armGrip('open')">张开夹爪</button>
-        <button class="btn btn-danger btn-sm" onclick="armGrip('close')">闭合夹爪</button>
-        <button class="btn btn-outline btn-sm" onclick="armBuzzer()">蜂鸣器</button>
-      </div>
-      <div style="margin-top:8px">
-        <div style="font-size:12px;color:var(--muted);margin-bottom:4px">IK 移动测试</div>
-        <div class="btn-row" style="align-items:end">
-          <span><label>X</label><br><input type="number" id="teachArmX" value="180" step="1" style="width:70px"></span>
-          <span><label>Y</label><br><input type="number" id="teachArmY" value="0" step="1" style="width:70px"></span>
-          <span><label>Z</label><br><input type="number" id="teachArmZ" value="230" step="1" style="width:70px"></span>
-          <button class="btn btn-primary btn-sm" onclick="teachArmMove()">移动</button>
-        </div>
+        <button class="btn btn-primary" id="btn-cam-open">打开相机</button>
+        <button class="btn btn-outline"  id="btn-cam-close">关闭相机</button>
+        <button class="btn btn-outline"  id="btn-snapshot">单帧检测</button>
+        <span style="flex:1"></span>
+        <button class="btn btn-success" id="btn-track-start">▶ 开始追踪</button>
+        <button class="btn btn-danger"  id="btn-track-stop">■ 停止追踪</button>
       </div>
     </div>
 
-    <!-- Execute -->
     <div class="card">
-      <h3>4. 执行任务</h3>
-      <div class="btn-row">
-        <button class="btn btn-outline btn-sm" id="btnLoadTasks">刷新任务列表</button>
-      </div>
-      <div id="taskList"></div>
-      <div id="execProgress" style="display:none;margin-top:10px;padding:12px;border-radius:6px;background:var(--bg);border:1px solid var(--warn)">
-        <div style="display:flex;align-items:center;gap:8px">
-          <div style="width:12px;height:12px;border-radius:50%;background:var(--warn);animation:pulse 1s infinite"></div>
-          <span style="color:var(--warn);font-weight:600;font-size:13px" id="execProgressText">执行中…</span>
-        </div>
-      </div>
-      <div id="execResult" style="display:none;margin-top:10px">
-        <div style="font-size:13px;font-weight:600;margin-bottom:6px;color:var(--accent2)" id="execResultTitle"></div>
-        <div id="execSteps" style="margin-bottom:8px"></div>
-        <details>
-          <summary style="font-size:12px;color:var(--muted);cursor:pointer">详细日志 (JSON)</summary>
-          <div class="result-json" id="execResultJson" style="margin-top:6px"></div>
-        </details>
+      <h3>追踪状态</h3>
+      <div class="kv" id="kv-state">
+        <div class="k">状态</div><div class="v" id="s-running">—</div>
+        <div class="k">检测到人脸</div><div class="v" id="s-face">—</div>
+        <div class="k">主脸 bbox</div><div class="v" id="s-bbox">—</div>
+        <div class="k">主脸中心 (像素)</div><div class="v" id="s-center">—</div>
+        <div class="k">画面尺寸</div><div class="v" id="s-size">—</div>
+        <div class="k">当前 yaw / pitch (°)</div><div class="v" id="s-angle">—</div>
+        <div class="k">FPS / 丢失帧</div><div class="v" id="s-fps">—</div>
+        <div class="k">最近 IK 脉冲</div><div class="v" id="s-pulse">—</div>
+        <div class="k">最近错误</div><div class="v err" id="s-err">—</div>
       </div>
     </div>
+
   </div>
 
-  <!-- Pipeline -->
-  <div id="tab-pipeline" style="display:none" class="fade-in">
+  <aside class="panel">
+
     <div class="card">
-      <h3>一键流水线</h3>
-      <p style="color:var(--muted);font-size:13px;margin-bottom:12px">抓拍当前画面 → 图像识别 → 计算臂控坐标（mock 或真实）</p>
-      <button class="btn btn-success" id="btnPipeline">执行</button>
+      <h3>检测器 <button class="btn btn-sm btn-outline" id="btn-reload-detector">重载</button></h3>
+      <div class="form-row">
+        <label>backend</label>
+        <select id="cfg-fd-backend">
+          <option value="haar">haar</option>
+          <option value="mediapipe">mediapipe</option>
+        </select>
+      </div>
+      <div class="form-row" data-only="haar">
+        <label>scale_factor</label>
+        <input type="number" step="0.05" min="1.05" max="1.5" id="cfg-haar-sf">
+      </div>
+      <div class="form-row" data-only="haar">
+        <label>min_neighbors</label>
+        <input type="number" step="1" min="1" max="12" id="cfg-haar-mn">
+      </div>
+      <div class="form-row" data-only="haar">
+        <label>min_size (px)</label>
+        <input type="number" step="5" min="20" max="240" id="cfg-haar-ms">
+      </div>
+      <div class="form-row" data-only="mediapipe">
+        <label>min_confidence</label>
+        <input type="number" step="0.05" min="0.1" max="0.95" id="cfg-mp-conf">
+      </div>
+      <div class="form-row" data-only="mediapipe">
+        <label>model_selection</label>
+        <select id="cfg-mp-model">
+          <option value="0">0 (≤2m)</option>
+          <option value="1">1 (≤5m)</option>
+        </select>
+      </div>
     </div>
-    <div id="pipelineResult" style="display:none" class="card fade-in">
-      <h3>流水线结果</h3>
-      <img id="pipeImg" style="max-width:100%;border-radius:6px;margin-bottom:8px">
-      <div class="result-json" id="pipeJson"></div>
-    </div>
-  </div>
 
+    <div class="card">
+      <h3>追踪参数</h3>
+      <div class="form-row">
+        <label>挑选策略</label>
+        <select id="cfg-pick"><option value="largest">largest</option><option value="center">center</option></select>
+      </div>
+      <div class="form-row">
+        <label>循环频率 Hz</label>
+        <input type="number" step="1" min="2" max="30" id="cfg-hz">
+      </div>
+      <div class="form-row">
+        <label>死区 (px)</label>
+        <input type="number" step="1" min="0" max="120" id="cfg-deadzone">
+      </div>
+      <div class="form-row">
+        <label>EMA 平滑 0~1</label>
+        <input type="number" step="0.05" min="0" max="1" id="cfg-smooth">
+      </div>
+      <div class="form-row">
+        <label>FOV 水平 (°)</label>
+        <input type="number" step="1" min="20" max="120" id="cfg-fovh">
+      </div>
+      <div class="form-row">
+        <label>FOV 垂直 (°)</label>
+        <input type="number" step="1" min="20" max="120" id="cfg-fovv">
+      </div>
+      <div class="form-row">
+        <label>yaw Kp</label>
+        <input type="number" step="0.05" min="0.05" max="2" id="cfg-yawkp">
+      </div>
+      <div class="form-row">
+        <label>pitch Kp</label>
+        <input type="number" step="0.05" min="0.05" max="2" id="cfg-pitchkp">
+      </div>
+      <div class="form-row">
+        <label>单步 yaw 上限 (°)</label>
+        <input type="number" step="1" min="1" max="30" id="cfg-maxyaw">
+      </div>
+      <div class="form-row">
+        <label>单步 pitch 上限 (°)</label>
+        <input type="number" step="1" min="1" max="30" id="cfg-maxpitch">
+      </div>
+
+      <div class="divider"></div>
+
+      <div class="form-row">
+        <label>home x / y / z (m)</label>
+        <input type="text" id="cfg-home-xyz" placeholder="0.18, 0.0, 0.10">
+      </div>
+      <div class="form-row">
+        <label>home pitch (°)</label>
+        <input type="number" step="1" min="-90" max="90" id="cfg-home-pitch">
+      </div>
+      <div class="form-row">
+        <label>yaw 范围 (°)</label>
+        <input type="text" id="cfg-yaw-range" placeholder="-75, 75">
+      </div>
+      <div class="form-row">
+        <label>pitch 范围 (°)</label>
+        <input type="text" id="cfg-pitch-range" placeholder="-45, 35">
+      </div>
+
+      <div class="btn-row" style="margin-top:10px">
+        <button class="btn btn-primary btn-sm" id="btn-apply">应用 (内存)</button>
+        <button class="btn btn-success btn-sm" id="btn-persist">应用并保存到文件</button>
+        <span style="flex:1"></span>
+        <button class="btn btn-outline btn-sm" id="btn-reload-cfg">重读 default.yaml</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>机械臂 <button class="btn btn-sm btn-outline" id="btn-arm-home">↺ 归位</button></h3>
+      <div class="kv">
+        <div class="k">arm_bridge</div><div class="v" id="arm-bridge">—</div>
+      </div>
+      <p style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.5">
+        arm_bridge 必须先在 Docker 容器内运行（端口 9091）。<br>
+        启动方式见 <code>scripts/arm_bridge.py</code> 顶部注释。
+      </p>
+    </div>
+
+    <div class="card">
+      <h3>日志 <button class="btn btn-sm btn-outline" id="btn-clear-log">清空</button></h3>
+      <div class="log" id="log"></div>
+    </div>
+
+  </aside>
 </div>
 
-<!-- ─── RIGHT PANEL: LOG ──────────────────────────── -->
-<div class="panel">
-  <div class="card" style="margin-bottom:12px">
-    <h3>3D 预览</h3>
-    <div id="arm3d" style="width:100%;height:220px;border-radius:6px;overflow:hidden;background:#111827"></div>
-    <div id="arm3dState" style="font-size:11px;color:var(--muted);margin-top:6px">等待机械臂状态…</div>
-  </div>
-  <div class="card" style="margin-bottom:12px">
-    <h3>操作日志</h3>
-    <div class="log" id="logBox"></div>
-  </div>
-  <div class="card">
-    <h3>机械臂控制</h3>
-    <div id="armStatus" style="font-size:13px;color:var(--muted);margin-bottom:10px">待命</div>
-    <div id="armDriverInfo" style="font-size:12px;color:var(--muted);margin-bottom:10px"></div>
-    <div class="btn-row">
-      <button class="btn btn-primary btn-sm" onclick="armHome()">回零位</button>
-      <button class="btn btn-success btn-sm" onclick="armGrip('open')">张开夹爪</button>
-      <button class="btn btn-danger btn-sm" onclick="armGrip('close')">闭合夹爪</button>
-      <button class="btn btn-outline btn-sm" onclick="armBuzzer()">蜂鸣器</button>
-    </div>
-    <div style="margin-top:10px">
-      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">IK 移动</div>
-      <div class="btn-row" style="align-items:end">
-        <span><label>X</label><br><input type="number" id="armMoveX" value="180" step="1" style="width:70px"></span>
-        <span><label>Y</label><br><input type="number" id="armMoveY" value="0" step="1" style="width:70px"></span>
-        <span><label>Z</label><br><input type="number" id="armMoveZ" value="230" step="1" style="width:70px"></span>
-        <button class="btn btn-primary btn-sm" onclick="armMoveTo()">移动</button>
-      </div>
-    </div>
-    <div style="margin-top:10px">
-      <div style="font-size:12px;color:var(--muted);margin-bottom:6px">直接舵机 (脉宽 0-1000)</div>
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:4px;font-size:12px">
-        <span><label>S6 底座</label><br><input type="number" id="sv6" value="500" min="0" max="1000" style="width:100%"></span>
-        <span><label>S5 肩部</label><br><input type="number" id="sv5" value="500" min="0" max="1000" style="width:100%"></span>
-        <span><label>S4 肘部</label><br><input type="number" id="sv4" value="500" min="0" max="1000" style="width:100%"></span>
-        <span><label>S3 腕俯仰</label><br><input type="number" id="sv3" value="500" min="0" max="1000" style="width:100%"></span>
-        <span><label>S2 腕旋转</label><br><input type="number" id="sv2" value="500" min="0" max="1000" style="width:100%"></span>
-        <span><label>S1 夹爪</label><br><input type="number" id="sv1" value="700" min="0" max="1000" style="width:100%"></span>
-      </div>
-      <div class="btn-row" style="margin-top:6px">
-        <input type="number" id="svDur" value="1.0" step="0.1" min="0.1" max="5" style="width:60px">
-        <label>秒</label>
-        <button class="btn btn-outline btn-sm" onclick="armSetServos()">发送</button>
-      </div>
-    </div>
-  </div>
-</div>
-</div>
+<footer>WonderPi · Face Tracking Demo</footer>
 
 <script>
-const $ = s => document.querySelector(s);
-const $$ = s => document.querySelectorAll(s);
+const $ = id => document.getElementById(id);
+const log = (msg, kind='') => {
+  const el = $('log');
+  const t = new Date().toLocaleTimeString();
+  const line = `[${t}] ${msg}\n`;
+  const span = document.createElement('span');
+  if (kind) span.className = kind;
+  span.textContent = line;
+  el.appendChild(span);
+  el.scrollTop = el.scrollHeight;
+  while (el.childNodes.length > 200) el.removeChild(el.firstChild);
+};
 
-// ── Log ──
-function log(msg, cls=''){
-  const box = $('#logBox');
-  const t = new Date().toLocaleTimeString('zh-CN',{hour12:false});
-  box.innerHTML += `<span class="${cls}">[${t}] ${msg}</span>\n`;
-  box.scrollTop = box.scrollHeight;
-}
-
-// ── Tabs ──
-const ALL_TABS = ['live','videos','frames','teach','pipeline'];
-$$('.tab').forEach(t => t.addEventListener('click', () => {
-  $$('.tab').forEach(x => x.classList.remove('active'));
-  t.classList.add('active');
-  ALL_TABS.forEach(k => {
-    const el = $(`#tab-${k}`);
-    if(el) el.style.display = t.dataset.tab === k ? '' : 'none';
+const api = async (path, opts={}) => {
+  const r = await fetch(path, {
+    headers: {'Content-Type': 'application/json'},
+    ...opts,
   });
-  if(t.dataset.tab==='videos') loadVideos();
-  if(t.dataset.tab==='frames') loadFrameDirs();
-  if(t.dataset.tab==='teach'){ startTeachStream(); loadTasks(); }
-  else stopTeachStream();
-}));
-
-// ── Camera ──
-async function camOpen(){
-  log('正在打开相机…','info');
-  try{
-    const r = await fetch('/api/camera/open',{method:'POST'});
-    const d = await r.json();
-    if(d.ok){
-      log(`相机已打开 [${d.backend}]`,'ok');
-      updateCamUI(true, d.backend);
-      startStream();
-    } else {
-      log('打开失败: '+d.error,'err');
-    }
-  }catch(e){log('请求失败: '+e,'err')}
-}
-async function camClose(){
-  await fetch('/api/camera/close',{method:'POST'});
-  updateCamUI(false,'');
-  stopStream();
-  log('相机已关闭','info');
-}
-function updateCamUI(open, backend){
-  $('#camDot').className = 'dot'+(open?' on':'');
-  $('#camStatus').textContent = open ? `已连接 (${backend})` : '相机未连接';
-  $('#btnCamOpen').disabled = open;
-  $('#btnCamClose').disabled = !open;
-}
-$('#btnCamOpen').onclick = camOpen;
-$('#btnCamClose').onclick = camClose;
-
-// ── Stream ──
-let streamActive = false;
-function startStream(){
-  streamActive = true;
-  const img = $('#streamImg');
-  img.src = '/api/stream?_t=' + Date.now();
-  img.style.display = '';
-  $('#streamPlaceholder').style.display = 'none';
-}
-function stopStream(){
-  streamActive = false;
-  const img = $('#streamImg');
-  img.src = '';
-  img.style.display = 'none';
-  $('#streamPlaceholder').style.display = '';
-}
-
-// ── Snapshot ──
-async function snapshot(infer){
-  log(infer ? '抓拍 + 识别…' : '抓拍…','info');
-  try{
-    const r = await fetch('/api/snapshot?infer='+(infer?1:0));
-    if(!r.ok){log('抓拍失败','err');return}
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-    $('#snapImg').src = url;
-    $('#snapResult').style.display = '';
-    const detsHeader = r.headers.get('X-Detections');
-    if(detsHeader){
-      const dets = JSON.parse(detsHeader);
-      $('#snapDets').textContent = JSON.stringify(dets, null, 2);
-      log(`识别完成: ${dets.length} 个目标`,'ok');
-      window._lastDets = dets;
-    } else {
-      $('#snapDets').textContent = infer ? '无检测结果' : '(未执行识别)';
-      if(infer) log('识别完成: 0 个目标','ok');
-    }
-  }catch(e){log('错误: '+e,'err')}
-}
-$('#btnSnapshot').onclick = () => snapshot(false);
-$('#btnSnapInfer').onclick = () => snapshot(true);
-
-// ── Record ──
-async function startRecord(){
-  const sec = parseInt($('#recSec').value)||10;
-  log(`开始录制 ${sec}s…`,'info');
-  $('#recBadge').style.display = '';
-  $('#btnRecord').disabled = true;
-  try{
-    const r = await fetch('/api/record',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({seconds:sec})});
-    const d = await r.json();
-    if(d.ok){
-      log(`录制中: ${d.file} (${sec}s)`,'ok');
-      pollRecording();
-    } else {
-      log('录制失败: '+d.error,'err');
-      $('#recBadge').style.display='none';
-      $('#btnRecord').disabled=false;
-    }
-  }catch(e){log('错误: '+e,'err');$('#recBadge').style.display='none';$('#btnRecord').disabled=false}
-}
-async function pollRecording(){
-  const poll = setInterval(async()=>{
-    const r = await fetch('/api/record/status');
-    const d = await r.json();
-    if(!d.recording){
-      clearInterval(poll);
-      $('#recBadge').style.display='none';
-      $('#btnRecord').disabled=false;
-      log('录制完成','ok');
-    }
-  }, 1000);
-}
-$('#btnRecord').onclick = startRecord;
-
-// ── Videos ──
-let _selectedVideo = '';
-async function loadVideos(){
-  const r = await fetch('/api/videos');
-  const d = await r.json();
-  const box = $('#videoList');
-  if(!d.videos.length){box.innerHTML='<div style="color:var(--muted);font-size:13px">暂无视频</div>';return}
-  box.innerHTML = d.videos.map(v =>
-    `<div class="list-item" onclick="selectVideo('${v.name}')">
-      <span>${v.name}</span><span class="meta">${v.size_kb} KB</span>
-    </div>`
-  ).join('');
-}
-function selectVideo(name){
-  _selectedVideo = name;
-  $('#videoPlayer').src = '/api/video/'+name;
-  $('#videoPreview').style.display = '';
-}
-$('#btnExtract').onclick = async () => {
-  if(!_selectedVideo){log('请先选择视频','err');return}
-  const step = parseInt($('#extractStep').value)||1;
-  log(`拆帧: ${_selectedVideo} (step=${step})…`,'info');
-  try{
-    const r = await fetch('/api/extract',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({video:_selectedVideo, step})});
-    const d = await r.json();
-    if(d.ok){log(`拆帧完成: ${d.count} 帧 → ${d.dir}`,'ok')}
-    else{log('拆帧失败: '+d.error,'err')}
-  }catch(e){log('错误: '+e,'err')}
+  let body = null;
+  try { body = await r.json(); } catch { body = {ok: false, error: `HTTP ${r.status}`}; }
+  if (!r.ok) body = {ok: false, error: body?.error || `HTTP ${r.status}`, ...body};
+  return body;
 };
 
-// ── Frames ──
-let _selectedFrameDir = '';
-async function loadFrameDirs(){
-  const r = await fetch('/api/frames');
-  const d = await r.json();
-  const box = $('#frameDirList');
-  if(!d.dirs.length){box.innerHTML='<div style="color:var(--muted);font-size:13px">暂无帧目录</div>';return}
-  box.innerHTML = d.dirs.map(v =>
-    `<div class="list-item" onclick="selectFrameDir('${v.name}')">
-      <span>${v.name}</span><span class="meta">${v.count} 帧</span>
-    </div>`
-  ).join('');
-}
-async function selectFrameDir(name){
-  _selectedFrameDir = name;
-  $('#frameDirTitle').textContent = name;
-  const r = await fetch('/api/frames/'+name);
-  const d = await r.json();
-  const grid = $('#frameGrid');
-  grid.innerHTML = d.files.map(f =>
-    `<img src="/api/frame/${name}/${f}" data-file="${f}" onclick="selectFrame(this,'${name}','${f}')" loading="lazy">`
-  ).join('');
-  $('#frameDetail').style.display='';
-  $('#inferResult').style.display='none';
-}
-function selectFrame(el, dir, file){
-  $$('.thumb-grid img').forEach(i=>i.classList.remove('active'));
-  el.classList.add('active');
-  showAnnotated(dir, file);
-}
-async function showAnnotated(dir, file){
-  log(`识别: ${dir}/${file}`,'info');
-  $('#inferImg').src = `/api/infer/annotated/${dir}/${file}`;
-  try{
-    const r = await fetch('/api/infer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({file:`${dir}/${file}`})});
-    const d = await r.json();
-    if(d.ok){
-      const allDets = d.results.flatMap(r=>r.detections);
-      $('#inferJson').textContent = JSON.stringify(d, null, 2);
-      log(`识别: ${allDets.length} 个目标`,'ok');
-      window._lastDets = allDets;
-    }
-  }catch(e){log('错误: '+e,'err')}
-  $('#inferResult').style.display='';
-}
-$('#btnInferDir').onclick = async () => {
-  if(!_selectedFrameDir) return;
-  log(`批量识别: ${_selectedFrameDir}…`,'info');
-  try{
-    const r = await fetch('/api/infer',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({dir:_selectedFrameDir})});
-    const d = await r.json();
-    if(d.ok){
-      $('#inferJson').textContent = JSON.stringify(d, null, 2);
-      log(`批量识别完成: ${d.total_detections} 个目标`,'ok');
-      window._lastDets = d.results.flatMap(r=>r.detections);
-    } else {log(d.error,'err')}
-    $('#inferResult').style.display='';
-  }catch(e){log('错误: '+e,'err')}
-};
-
-// ── Arm ──
-$('#btnArmFromInfer').onclick = async () => {
-  const dets = window._lastDets;
-  if(!dets||!dets.length){log('无检测结果可发送','err');return}
-  log('发送到机械臂…','info');
-  try{
-    const r = await fetch('/api/arm',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({detections:dets})});
-    const d = await r.json();
-    if(d.ok){
-      const ws = d.workspace||{};
-      const txt = `[${d.arm_mode}] → (${ws.x}, ${ws.y})`;
-      $('#armStatus').innerHTML = `<span style="color:var(--accent2)">${txt}</span>`;
-      log('臂控: '+txt,'ok');
-    } else {log(d.error||'臂控失败','err')}
-  }catch(e){log('错误: '+e,'err')}
-};
-
-// ── Pipeline ──
-$('#btnPipeline').onclick = async () => {
-  log('执行流水线…','info');
-  try{
-    const r = await fetch('/api/pipeline',{method:'POST'});
-    const d = await r.json();
-    if(d.ok){
-      if(d.image) $('#pipeImg').src = d.image;
-      $('#pipeJson').textContent = JSON.stringify({detections:d.detections, arm:d.arm}, null, 2);
-      log(`流水线完成: ${(d.detections||[]).length} 目标, 臂控=${d.arm?.status}`,'ok');
-      if(d.arm?.workspace){
-        const ws=d.arm.workspace;
-        $('#armStatus').innerHTML = `<span style="color:var(--accent2)">[${d.arm.arm_mode}] → (${ws.x}, ${ws.y})</span>`;
-      }
-    } else {log(d.error||'流水线失败','err')}
-    $('#pipelineResult').style.display='';
-  }catch(e){log('错误: '+e,'err')}
-};
-
-// ── Teach Stream ──
-let teachStreamActive = false;
-function startTeachStream(){
-  if(!teachStreamActive && camera_open){
-    teachStreamActive = true;
-    const img = $('#teachStream');
-    img.src = '/api/stream/detect?' + Date.now();
-    img.style.display = '';
-    $('#teachPlaceholder').style.display = 'none';
-  }
-}
-function stopTeachStream(){
-  if(teachStreamActive){
-    teachStreamActive = false;
-    const img = $('#teachStream');
-    img.src = '';
-    img.style.display = 'none';
-    $('#teachPlaceholder').style.display = '';
-  }
-}
-let camera_open = false;
-const _origUpdateCamUI = updateCamUI;
-updateCamUI = function(open, backend){
-  camera_open = open;
-  _origUpdateCamUI(open, backend);
-};
-
-// ── Detection Method ──
-function updateCbParamsVisibility(){
-  const m = $('#detectMethod').value;
-  $('#cbParamsGroup').style.display = m === 'checkerboard' ? '' : 'none';
-}
-$('#detectMethod').onchange = updateCbParamsVisibility;
-updateCbParamsVisibility();
-
-function syncBoardCalibFromDetect(){
-  $('#boardCalibCols').value = $('#cbCols').value;
-  $('#boardCalibRows').value = $('#cbRows').value;
-}
-$('#cbCols').addEventListener('input', syncBoardCalibFromDetect);
-$('#cbRows').addEventListener('input', syncBoardCalibFromDetect);
-
-$('#btnApplyDetect').onclick = async () => {
-  const method = $('#detectMethod').value;
-  const body = { method };
-  if(method === 'checkerboard'){
-    body.cols = parseInt($('#cbCols').value) || 5;
-    body.rows = parseInt($('#cbRows').value) || 4;
-  }
-  try{
-    const r = await fetch('/api/config/detect_method',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const d = await r.json();
-    if(d.ok){
-      log(`检测方式已切换: ${method}`,'ok');
-      if(method === 'checkerboard') syncBoardCalibFromDetect();
-    }
-    else log(d.error,'err');
-  }catch(e){log('错误: '+e,'err')}
-};
-
-(async()=>{
-  try{
-    const r = await fetch('/api/config/detect_method');
-    const d = await r.json();
-    if(d.ok){
-      $('#detectMethod').value = d.method;
-      if(d.checkerboard){
-        $('#cbCols').value = d.checkerboard.cols || 5;
-        $('#cbRows').value = d.checkerboard.rows || 4;
-        syncBoardCalibFromDetect();
-      }
-      updateCbParamsVisibility();
-    }
-  }catch(e){}
-})();
-
-// ── Calibration ──
-let calibPoints = [];
-function renderCalibTable(){
-  const tb = $('#calibTableBody');
-  tb.innerHTML = calibPoints.map((p,i)=>
-    `<tr><td>${i+1}</td><td>(${p.pixel[0]}, ${p.pixel[1]})</td><td>(${p.arm[0]}, ${p.arm[1]})</td></tr>`
-  ).join('');
-  $('#btnCalibCompute').disabled = calibPoints.length < 4;
-}
-$('#btnCalibPoint').onclick = async () => {
-  const ax = parseFloat($('#calibArmX').value);
-  const ay = parseFloat($('#calibArmY').value);
-  if(isNaN(ax)||isNaN(ay)){log('请输入有效的臂坐标','err');return}
-  log(`记录标定点: 臂(${ax}, ${ay})…`,'info');
-  try{
-    const r = await fetch('/api/calibrate/point',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({arm_x:ax,arm_y:ay})});
-    const d = await r.json();
-    if(d.ok){
-      calibPoints.push(d.point);
-      renderCalibTable();
-      log(`标定点 #${d.total}: 像素(${d.point.pixel}) → 臂(${d.point.arm})`,'ok');
-    } else {log(d.error,'err')}
-  }catch(e){log('错误: '+e,'err')}
-};
-$('#btnCalibReset').onclick = async () => {
-  await fetch('/api/calibrate/reset',{method:'POST'});
-  calibPoints = [];
-  renderCalibTable();
-  $('#calibResult').textContent = '';
-  log('标定点已重置','info');
-};
-$('#btnCalibCompute').onclick = async () => {
-  log('计算 Homography…','info');
-  try{
-    const r = await fetch('/api/calibrate/compute',{method:'POST'});
-    const d = await r.json();
-    if(d.ok){
-      $('#calibResult').textContent = '标定完成 (Homography 已保存)';
-      log('标定完成','ok');
-    } else {log(d.error,'err')}
-  }catch(e){log('错误: '+e,'err')}
-};
-$('#btnTag3d').onclick = async () => {
-  const ax = parseFloat($('#tagCenterXmm').value);
-  const ay = parseFloat($('#tagCenterYmm').value);
-  const edge = parseFloat($('#tagEdgeMm').value);
-  if(isNaN(ax)||isNaN(ay)){ log('请填写 Tag 中心 X/Y (mm)','err'); return; }
-  if(isNaN(edge)||edge<5){ log('请填写合理的 Tag 外框边长 (mm)','err'); return; }
-  log('AprilTag 3D 批量采点…','info');
-  try{
-    const r = await fetch('/api/calibrate/tag3d',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({ arm_x_mm: ax, arm_y_mm: ay, tag_edge_mm: edge, include_preview: true })
-    });
-    const d = await r.json();
-    if(d.ok){
-      const m = d.meta||{};
-      log(`AprilTag: +${d.added} 点, 累计 ${d.total} (id=${m.marker_id}, 深度角点 ${m.points_with_depth}/4)`,'ok');
-      $('#calibResult').textContent = `AprilTag 已添加 ${d.added} 个 3D 点，可点「计算标定」`;
-      if(d.preview){
-        const prev = document.getElementById('board3dPreview');
-        if(prev){ prev.src = d.preview; prev.style.display = ''; }
-      }
-      renderCalibTableFromServer();
-    } else { log(d.error||'失败','err'); }
-  }catch(e){ log('错误: '+e,'err'); }
-};
-$('#btnBoard3d').onclick = async () => {
-  if($('#detectMethod').value !== 'checkerboard'){
-    log('请先将「检测方式」选为棋盘格标定板，列×行与实物一致后点「应用」。','err');
-    return;
-  }
-  syncBoardCalibFromDetect();
-  const ax = parseFloat($('#boardOriginXmm').value);
-  const ay = parseFloat($('#boardOriginYmm').value);
-  const cols = parseInt($('#cbCols').value, 10);
-  const rows = parseInt($('#cbRows').value, 10);
-  const sq = parseFloat($('#boardSquareMm').value);
-  if(isNaN(ax)||isNaN(ay)){ log('请填写棋盘原点 X/Y (mm)','err'); return; }
-  if(isNaN(cols)||isNaN(rows)||cols<2||rows<2){ log('请在上方「检测方式」填写内角点列、行（≥2）并点「应用」。','err'); return; }
-  if(isNaN(sq)||sq<=0){ log('请填写合理的方格边长 (mm)','err'); return; }
-  log(`棋盘格 3D 批量采点 (${cols}×${rows} 内角点，与检测一致)…`,'info');
-  try{
-    const r = await fetch('/api/calibrate/board3d',{
-      method:'POST',
-      headers:{'Content-Type':'application/json'},
-      body: JSON.stringify({
-        arm_x_mm: ax,
-        arm_y_mm: ay,
-        square_size_mm: sq,
-        include_preview: true
-      })
-    });
-    const d = await r.json();
-    if(d.ok){
-      const m = d.meta||{};
-      let extra = '';
-      if(m.pattern_autopicked && m.pattern_cols != null){
-        extra = `，自动匹配内角点 ${m.pattern_cols}×${m.pattern_rows}（hint ${(m.pattern_hint||[]).join('×')}，试 ${m.autotry_attempts||'?'} 组）`;
-      } else if(m.autotry_attempts){
-        extra = `，尝试 ${m.autotry_attempts} 组尺寸`;
-      }
-      log(`棋盘格采点: +${d.added} 点, 累计 ${d.total} (深度 ${m.points_with_depth}/${m.corners_total}${extra})`,'ok');
-      $('#calibResult').textContent = `棋盘格已添加 ${d.added} 个 3D 约束点，可点「计算标定」`;
-      if(d.preview){
-        const prev = document.getElementById('board3dPreview');
-        if(prev){ prev.src = d.preview; prev.style.display = ''; }
-      }
-      renderCalibTableFromServer();
-    } else { log(d.error||'失败','err'); }
-  }catch(e){ log('错误: '+e,'err'); }
-};
-async function renderCalibTableFromServer(){
-  try{
-    const r = await fetch('/api/calibrate/status');
-    const d = await r.json();
-    if(d.ok && d.points){
-      calibPoints = d.points;
-      renderCalibTable();
-    }
-  }catch(e){}
+// ── pills + status polling ────────────────────────────────────────
+function setPill(id, ok, label, mode='on') {
+  const p = $(id);
+  p.classList.remove('on','warn');
+  if (ok === true) p.classList.add(mode);
+  p.querySelector('span:last-child').textContent = label;
 }
 
-// ── Teach Record ──
-let teachHasPick = false, teachHasPlace = false;
-function teachMsg(text, type){
-  const el = $('#teachMsg');
-  el.textContent = text;
-  el.style.display = text ? '' : 'none';
-  el.style.background = type === 'err' ? 'var(--danger)' : type === 'warn' ? 'var(--warn)' : 'var(--accent2)';
-  el.style.color = type === 'warn' ? '#333' : '#fff';
-  if(text && type !== 'err') setTimeout(() => { if(el.textContent === text) el.style.display = 'none'; }, 8000);
-}
-function updateTeachSteps(){
-  const s1 = $('#teachStep1Num'), s2 = $('#teachStep2Num'), s3 = $('#teachStep3Num');
-  s1.className = 'num ' + (teachHasPick ? 'done' : 'active');
-  s2.className = 'num ' + (teachHasPlace ? 'done' : (teachHasPick ? 'active' : 'todo'));
-  s3.className = 'num ' + ((teachHasPick&&teachHasPlace) ? 'active' : 'todo');
-  $('#btnTeachSave').disabled = !(teachHasPick && teachHasPlace);
-}
-$('#btnTeachPick').onclick = async () => {
-  const ax_mm = parseFloat($('#pickArmX').value);
-  const ay_mm = parseFloat($('#pickArmY').value);
-  const body = {};
-  if(!isNaN(ax_mm) && !isNaN(ay_mm)) { body.arm_x = ax_mm / 1000; body.arm_y = ay_mm / 1000; }
-  log(`记录拾取点 (${ax_mm}, ${ay_mm}) mm…`,'info');
-  teachMsg('');
-  try{
-    const r = await fetch('/api/teach/pick',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const d = await r.json();
-    if(d.ok){
-      const p = d.pick;
-      let txt = '';
-      if(p.pixel) txt += `像素(${p.pixel[0]}, ${p.pixel[1]}) `;
-      if(p.arm) txt += `IK(${(p.arm[0]*1000).toFixed(0)}, ${(p.arm[1]*1000).toFixed(0)}) mm`;
-      else txt += '⚠️ 无IK坐标';
-      if(p.depth_mm) txt += ` 深度=${p.depth_mm}mm`;
-      if(p.z_pick !== undefined) txt += ` Z抓取=${(p.z_pick*1000).toFixed(0)}mm`;
-      if(p.z_move !== undefined) txt += ` Z抬起=${(p.z_move*1000).toFixed(0)}mm`;
-      $('#teachPickText').textContent = txt;
-      $('#teachPickInfo').style.display = '';
-      teachHasPick = true;
-      updateTeachSteps();
-      log('拾取点: ' + txt,'ok');
-      if(d.warning) teachMsg(d.warning, 'warn');
-      if(!p.arm) teachMsg('拾取点缺少 IK 坐标，请手动填写 X/Y 后重新记录', 'warn');
-    } else { teachMsg(d.error, 'err'); log(d.error,'err'); }
-  }catch(e){ teachMsg('请求失败: '+e, 'err'); log('错误: '+e,'err'); }
-};
-$('#btnTeachPlace').onclick = async () => {
-  const ax_mm = parseFloat($('#placeArmX').value);
-  const ay_mm = parseFloat($('#placeArmY').value);
-  const body = {};
-  if(!isNaN(ax_mm) && !isNaN(ay_mm)) { body.arm_x = ax_mm / 1000; body.arm_y = ay_mm / 1000; }
-  log(`记录放置点 (${ax_mm}, ${ay_mm}) mm…`,'info');
-  teachMsg('');
-  try{
-    const r = await fetch('/api/teach/place',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(body)});
-    const d = await r.json();
-    if(d.ok){
-      const p = d.place;
-      let txt = '';
-      if(p.pixel) txt += `像素(${p.pixel[0]}, ${p.pixel[1]}) `;
-      if(p.arm) txt += `IK(${(p.arm[0]*1000).toFixed(0)}, ${(p.arm[1]*1000).toFixed(0)}) mm`;
-      else txt += '⚠️ 无IK坐标';
-      if(p.depth_mm) txt += ` 深度=${p.depth_mm}mm`;
-      if(p.z_pick !== undefined) txt += ` Z抓取=${(p.z_pick*1000).toFixed(0)}mm`;
-      if(p.z_move !== undefined) txt += ` Z抬起=${(p.z_move*1000).toFixed(0)}mm`;
-      $('#teachPlaceText').textContent = txt;
-      $('#teachPlaceInfo').style.display = '';
-      teachHasPlace = true;
-      updateTeachSteps();
-      log('放置点: ' + txt,'ok');
-      if(d.warning) teachMsg(d.warning, 'warn');
-      if(!p.arm) teachMsg('放置点缺少 IK 坐标，请手动填写 X/Y 后重新记录', 'warn');
-    } else { teachMsg(d.error, 'err'); log(d.error,'err'); }
-  }catch(e){ teachMsg('请求失败: '+e, 'err'); log('错误: '+e,'err'); }
-};
-$('#btnTeachSave').onclick = async () => {
-  const name = $('#teachTaskName').value.trim() || 'pick_blue_block';
-  log(`保存任务: ${name}…`,'info');
-  teachMsg('');
-  $('#btnTeachSave').disabled = true;
-  try{
-    const r = await fetch('/api/teach/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({name})});
-    const d = await r.json();
-    if(d.ok){
-      teachMsg(`✅ 任务「${name}」已保存`, 'ok');
-      log(`任务已保存: ${d.task._file}`,'ok');
-      teachHasPick = teachHasPlace = false;
-      updateTeachSteps();
-      $('#teachPickInfo').style.display = 'none';
-      $('#teachPlaceInfo').style.display = 'none';
-      loadTasks();
-    } else {
-      teachMsg(d.error, 'err');
-      log('保存失败: ' + d.error,'err');
-      $('#btnTeachSave').disabled = false;
-    }
-  }catch(e){
-    teachMsg('请求失败: '+e, 'err');
-    log('错误: '+e,'err');
-    $('#btnTeachSave').disabled = false;
-  }
-};
-updateTeachSteps();
-
-// ── Teach Arm Move ──
-async function teachArmMove(){
-  const xm=parseFloat($('#teachArmX').value)/1000, ym=parseFloat($('#teachArmY').value)/1000, zm=parseFloat($('#teachArmZ').value)/1000;
-  if(isNaN(xm)||isNaN(ym)||isNaN(zm)){log('请输入有效的 XYZ 坐标','err');return}
-  const xd=$('#teachArmX').value, yd=$('#teachArmY').value, zd=$('#teachArmZ').value;
-  log(`IK 移动: (${xd}, ${yd}, ${zd}) mm…`,'info');
-  $('#armStatus').innerHTML = '<span style="color:var(--warn)">移动中…</span>';
-  try{
-    const r = await fetch('/api/arm/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x:xm,y:ym,z:zm})});
-    const d = await r.json();
-    if(d.ok){log(`移动完成: (${xd}, ${yd}, ${zd}) mm`,'ok');$('#armStatus').innerHTML=`<span style="color:var(--accent2)">位置 (${xd}, ${yd}, ${zd}) mm</span>`}
-    else{log('移动失败: '+d.error,'err');$('#armStatus').innerHTML='<span style="color:var(--danger)">IK 失败</span>'}
-  }catch(e){log('错误: '+e,'err')}
+async function refreshHealth() {
+  const h = await api('/api/health');
+  setPill('pill-cam', h.camera_open, h.camera_open ? `相机 ${h.camera_backend}` : '相机未开');
+  setPill('pill-arm', h.arm_bridge, h.arm_bridge ? 'arm_bridge OK' : 'arm_bridge 未连接', h.arm_bridge ? 'on' : 'warn');
+  setPill('pill-track', h.tracker_running, h.tracker_running ? '追踪运行中' : '追踪未启动');
+  setPill('pill-face', true, `检测器 ${h.face_backend}`);
+  $('arm-bridge').textContent = h.arm_bridge ? '在线 (http://localhost:9091)' : '离线';
+  $('arm-bridge').className = 'v ' + (h.arm_bridge ? 'ok' : 'err');
 }
 
-// ── Tasks ──
-$('#btnLoadTasks').onclick = loadTasks;
-let _execBusy = false;
-async function loadTasks(){
-  try{
-    const r = await fetch('/api/tasks');
-    const d = await r.json();
-    const box = $('#taskList');
-    if(!d.tasks||!d.tasks.length){box.innerHTML='<div style="color:var(--muted);font-size:13px">暂无已保存任务</div>';return}
-    box.innerHTML = d.tasks.map(t =>
-      `<div class="list-item">
-        <span>
-          <b>${t.name}</b>
-          <span class="meta" style="margin-left:6px">${t.created||''}</span>
-        </span>
-        <div style="display:flex;gap:4px">
-          <button class="btn btn-success btn-sm" onclick="executeTask('${t._file}','${t.name}')">执行</button>
-        </div>
-      </div>`
-    ).join('');
-  }catch(e){log('错误: '+e,'err')}
-}
-
-function _formatAction(a){
-  const name = a.action||'';
-  if(name==='home') return '🏠 回零';
-  if(name==='grip_open') return '✋ 张开夹爪';
-  if(name==='grip_close') return '✊ 闭合夹爪';
-  if(name==='move_to') return `📍 移动 (${a.x??''}, ${a.y??''}, ${a.z??''})`;
-  if(name==='move_to_done') return `✅ 到达`;
-  return name;
-}
-
-async function executeTask(file, name){
-  if(_execBusy){log('已有任务在执行中','err');return}
-  _execBusy = true;
-
-  log(`执行任务: ${name||file}…`,'info');
-  $('#armStatus').innerHTML = '<span style="color:var(--warn)">执行中…</span>';
-  $('#execProgress').style.display = '';
-  $('#execProgressText').textContent = `正在执行「${name||file}」…`;
-  $('#execResult').style.display = 'none';
-
-  $$('#taskList .btn').forEach(b => b.disabled = true);
-
-  try{
-    const r = await fetch('/api/execute',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({task:file})});
-    const d = await r.json();
-    $('#execProgress').style.display = 'none';
-
-    if(d.ok){
-      const actions = (d.action_log||[]).filter(a => !a.action.endsWith('_done'));
-      const stepsHtml = actions.map((a,i) =>
-        `<div class="step-row" style="border-bottom:${i<actions.length-1?'1px solid var(--border)':'none'}">
-          <div class="num done">${i+1}</div>
-          <span>${_formatAction(a)}</span>
-        </div>`
-      ).join('');
-
-      $('#execResultTitle').textContent = `✅ 任务「${name||file}」执行完成` + (d.used_live_detect?' (实时检测拾取点)':' (示教坐标)');
-      $('#execSteps').innerHTML = stepsHtml;
-      $('#execResultJson').textContent = JSON.stringify(d.action_log, null, 2);
-      $('#execResult').style.display = '';
-      log(`执行完成: ${actions.length} 步`,'ok');
-      $('#armStatus').innerHTML = `<span style="color:var(--accent2)">任务完成</span>`;
-    } else {
-      log('执行失败: '+d.error,'err');
-      $('#armStatus').innerHTML = '<span style="color:var(--danger)">执行失败</span>';
-      $('#execResultTitle').textContent = '❌ 执行失败';
-      $('#execSteps').innerHTML = `<div style="color:var(--danger);font-size:13px;padding:8px 0">${d.error}</div>`;
-      $('#execResultJson').textContent = '';
-      $('#execResult').style.display = '';
-    }
-  }catch(e){
-    $('#execProgress').style.display = 'none';
-    log('错误: '+e,'err');
-    $('#armStatus').innerHTML='<span style="color:var(--danger)">错误</span>';
-  } finally {
-    _execBusy = false;
-    $$('#taskList .btn').forEach(b => b.disabled = false);
-  }
-}
-
-// ── Arm Control ──
-async function armHome(){
-  log('机械臂回零位…','info');
-  $('#armStatus').innerHTML = '<span style="color:var(--warn)">回零中…</span>';
-  try{
-    const r = await fetch('/api/arm/home',{method:'POST'});
-    const d = await r.json();
-    if(d.ok){log('回零完成','ok');$('#armStatus').innerHTML='<span style="color:var(--accent2)">零位</span>'}
-    else{log('回零失败: '+d.error,'err');$('#armStatus').innerHTML='<span style="color:var(--danger)">失败</span>'}
-  }catch(e){log('错误: '+e,'err')}
-}
-async function armGrip(action){
-  log(`夹爪${action==='open'?'张开':'闭合'}…`,'info');
-  try{
-    const r = await fetch('/api/arm/grip',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({action})});
-    const d = await r.json();
-    if(d.ok){log(`夹爪${action==='open'?'已张开':'已闭合'}`,'ok')}
-    else{log(d.error,'err')}
-  }catch(e){log('错误: '+e,'err')}
-}
-async function armBuzzer(){
-  try{await fetch('/api/arm/buzzer',{method:'POST'});log('蜂鸣器','ok')}catch(e){log('错误: '+e,'err')}
-}
-async function armMoveTo(){
-  const xm=parseFloat($('#armMoveX').value)/1000, ym=parseFloat($('#armMoveY').value)/1000, zm=parseFloat($('#armMoveZ').value)/1000;
-  if(isNaN(xm)||isNaN(ym)||isNaN(zm)){log('请输入有效的 XYZ 坐标','err');return}
-  const xd=$('#armMoveX').value, yd=$('#armMoveY').value, zd=$('#armMoveZ').value;
-  log(`IK 移动: (${xd}, ${yd}, ${zd}) mm…`,'info');
-  $('#armStatus').innerHTML = '<span style="color:var(--warn)">移动中…</span>';
-  try{
-    const r = await fetch('/api/arm/move',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({x:xm,y:ym,z:zm})});
-    const d = await r.json();
-    if(d.ok){log(`移动完成: (${xd}, ${yd}, ${zd}) mm`,'ok');$('#armStatus').innerHTML=`<span style="color:var(--accent2)">位置 (${xd}, ${yd}, ${zd}) mm</span>`}
-    else{log('移动失败: '+d.error,'err');$('#armStatus').innerHTML='<span style="color:var(--danger)">IK 失败</span>'}
-  }catch(e){log('错误: '+e,'err')}
-}
-async function armSetServos(){
-  const positions = {};
-  for(let i=1;i<=6;i++){
-    const v = parseInt($('#sv'+i).value);
-    if(!isNaN(v)) positions[i] = v;
-  }
-  const dur = parseFloat($('#svDur').value)||1.0;
-  log(`直接舵机: ${JSON.stringify(positions)} (${dur}s)`,'info');
-  try{
-    const r = await fetch('/api/arm/servos',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({positions,duration:dur})});
-    const d = await r.json();
-    if(d.ok){log('舵机指令已发送','ok')}
-    else{log(d.error,'err')}
-  }catch(e){log('错误: '+e,'err')}
-}
-
-// ── 3D Preview ──
-let arm3d = null;
-async function ensureThreeLoaded(){
-  if(window.THREE) return true;
-  const urls = [
-    'https://cdn.jsdelivr.net/npm/three@0.161.0/build/three.min.js',
-    'https://unpkg.com/three@0.161.0/build/three.min.js',
-  ];
-  for(const u of urls){
-    try{
-      await new Promise((resolve, reject) => {
-        const s = document.createElement('script');
-        s.src = u;
-        s.async = true;
-        s.onload = resolve;
-        s.onerror = reject;
-        document.head.appendChild(s);
-      });
-      if(window.THREE) return true;
-    }catch(e){}
-  }
-  return false;
-}
-
-function initArm3D(){
-  const el = $('#arm3d');
-  if(!el || !window.THREE){
-    if(el) el.innerHTML = '<div style="color:#94a3b8;padding:10px;font-size:12px">3D 引擎加载失败（网络/CDN 不可达）</div>';
-    return;
-  }
-  const w = el.clientWidth || 320;
-  const h = el.clientHeight || 220;
-  const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x111827);
-  const camera = new THREE.PerspectiveCamera(45, w / h, 0.1, 100);
-  camera.position.set(0, 6, 10);
-  camera.lookAt(0, 1.5, 0);
-  const renderer = new THREE.WebGLRenderer({antialias:true});
-  renderer.setSize(w, h);
-  el.innerHTML = '';
-  el.appendChild(renderer.domElement);
-
-  const light1 = new THREE.DirectionalLight(0xffffff, 1.0);
-  light1.position.set(5, 8, 5);
-  scene.add(light1);
-  scene.add(new THREE.AmbientLight(0x808080, 0.8));
-
-  const base = new THREE.Mesh(
-    new THREE.CylinderGeometry(1.1, 1.1, 0.5, 32),
-    new THREE.MeshStandardMaterial({color:0x334155})
-  );
-  base.position.y = 0.25;
-  scene.add(base);
-
-  const yaw = new THREE.Group();
-  yaw.position.y = 0.5;
-  scene.add(yaw);
-
-  const shoulder = new THREE.Group();
-  yaw.add(shoulder);
-  const upper = new THREE.Mesh(
-    new THREE.BoxGeometry(0.6, 2.2, 0.6),
-    new THREE.MeshStandardMaterial({color:0x60a5fa})
-  );
-  upper.position.y = 1.1;
-  shoulder.add(upper);
-
-  const elbow = new THREE.Group();
-  elbow.position.y = 2.2;
-  shoulder.add(elbow);
-  const fore = new THREE.Mesh(
-    new THREE.BoxGeometry(0.5, 2.0, 0.5),
-    new THREE.MeshStandardMaterial({color:0x34d399})
-  );
-  fore.position.y = 1.0;
-  elbow.add(fore);
-
-  const wrist = new THREE.Group();
-  wrist.position.y = 2.0;
-  elbow.add(wrist);
-  const hand = new THREE.Mesh(
-    new THREE.BoxGeometry(0.9, 0.3, 0.9),
-    new THREE.MeshStandardMaterial({color:0xf59e0b})
-  );
-  wrist.add(hand);
-
-  const fingerL = new THREE.Mesh(new THREE.BoxGeometry(0.15, 0.6, 0.15), new THREE.MeshStandardMaterial({color:0xe5e7eb}));
-  const fingerR = fingerL.clone();
-  fingerL.position.set(-0.2, -0.35, 0.25);
-  fingerR.position.set(0.2, -0.35, 0.25);
-  wrist.add(fingerL, fingerR);
-
-  arm3d = {scene, camera, renderer, yaw, shoulder, elbow, wrist, fingerL, fingerR};
-  const loop = ()=>{ if(!arm3d) return; renderer.render(scene, camera); requestAnimationFrame(loop); };
-  loop();
-}
-
-function deg2rad(d){ return d * Math.PI / 180; }
-async function pollArm3D(){
-  if(!arm3d) return;
-  try{
-    const r = await fetch('/api/arm/state');
-    const d = await r.json();
-    if(d.ok && d.joint_deg){
-      const j = d.joint_deg;
-      arm3d.yaw.rotation.y = deg2rad(j.base || 0);
-      arm3d.shoulder.rotation.z = deg2rad(-(j.shoulder || 0));
-      arm3d.elbow.rotation.z = deg2rad(-(j.elbow || 0));
-      arm3d.wrist.rotation.z = deg2rad(-(j.wrist || 0));
-      const open = d.gripper?.open ? 0.28 : 0.16;
-      arm3d.fingerL.position.x = -open;
-      arm3d.fingerR.position.x = open;
-      $('#arm3dState').textContent = `base=${(j.base||0).toFixed(1)}°, shoulder=${(j.shoulder||0).toFixed(1)}°, elbow=${(j.elbow||0).toFixed(1)}°, wrist=${(j.wrist||0).toFixed(1)}°`;
-    } else {
-      $('#arm3dState').textContent = 'arm_bridge 状态不可用';
-    }
-  }catch(e){
-    $('#arm3dState').textContent = 'arm_bridge 状态不可用';
-  }
-}
-
-// ── Init ──
-(async()=>{
-  const threeOk = await ensureThreeLoaded();
-  if(threeOk){
-    initArm3D();
-    setInterval(pollArm3D, 250);
+async function refreshTrackerStatus() {
+  const s = await api('/api/track/status');
+  $('s-running').textContent = s.running ? '运行中' : '已停止';
+  $('s-running').className = 'v ' + (s.running ? 'ok' : '');
+  $('s-face').textContent = s.face_found ? '是' : '否';
+  $('s-face').className = 'v ' + (s.face_found ? 'ok' : 'warn');
+  if (s.last_face) {
+    const [x,y,w,h] = s.last_face.bbox;
+    $('s-bbox').textContent = `[${x}, ${y}, ${w}×${h}]  score=${s.last_face.score ?? '—'}`;
+    $('s-center').textContent = `(${s.last_face.center[0]}, ${s.last_face.center[1]})`;
   } else {
-    $('#arm3dState').textContent = 'three.js 加载失败，请检查网络';
+    $('s-bbox').textContent = '—';
+    $('s-center').textContent = '—';
   }
-  const r = await fetch('/api/camera/status');
-  const d = await r.json();
-  if(d.open){updateCamUI(true,d.backend);startStream()}
-  try{
-    const ar = await fetch('/api/arm/status');
-    const ad = await ar.json();
-    if(ad.ok){
-      const mode = ad.driver || 'mock';
-      $('#armDriverInfo').textContent = `驱动: ${mode}`;
-      log(`机械臂驱动: ${mode}`,'info');
-    }
-  }catch(e){}
-  log('控制台已就绪','ok');
-})();
+  $('s-size').textContent = s.img_size ? `${s.img_size[0]}×${s.img_size[1]}` : '—';
+  $('s-angle').textContent = `yaw=${(s.yaw_deg ?? 0).toFixed(1)}  pitch=${(s.pitch_deg ?? 0).toFixed(1)}`;
+  $('s-fps').textContent = `${(s.fps ?? 0).toFixed(1)} fps  ·  lost=${s.lost_frames ?? 0}`;
+  $('s-pulse').textContent = s.last_move_pulses ? JSON.stringify(s.last_move_pulses) : '—';
+  $('s-err').textContent = s.last_error || '—';
+  $('pill-fps').querySelector('span').textContent = `FPS ${(s.fps ?? 0).toFixed(1)}`;
+}
+
+// ── camera ────────────────────────────────────────────────────────
+function showStream(on) {
+  const img = $('video');
+  const overlay = $('video-overlay');
+  const badge = $('video-badge');
+  if (on) {
+    img.src = `/api/stream?annotate=1&t=${Date.now()}`;
+    overlay.style.display = 'none';
+    badge.textContent = 'LIVE';
+    badge.classList.add('live');
+  } else {
+    img.removeAttribute('src');
+    overlay.style.display = 'flex';
+    overlay.textContent = '相机已关闭';
+    badge.textContent = '未连接';
+    badge.classList.remove('live');
+  }
+}
+
+$('btn-cam-open').onclick = async () => {
+  log('打开相机…','info');
+  const r = await api('/api/camera/open', {method:'POST'});
+  if (r.ok) {
+    log(`相机已打开 (backend=${r.backend})`, 'ok');
+    showStream(true);
+  } else {
+    log('打开失败: ' + r.error, 'err');
+  }
+  refreshHealth();
+};
+$('btn-cam-close').onclick = async () => {
+  await api('/api/camera/close', {method:'POST'});
+  log('相机已关闭');
+  showStream(false);
+  refreshHealth();
+};
+$('btn-snapshot').onclick = async () => {
+  const r = await api('/api/face/detect');
+  if (!r.ok) { log('单帧检测失败: ' + r.error, 'err'); return; }
+  log(`检测到 ${r.faces.length} 张人脸 (backend=${r.backend})`, r.faces.length ? 'ok' : 'warn');
+};
+
+// ── tracker ───────────────────────────────────────────────────────
+$('btn-track-start').onclick = async () => {
+  const r = await api('/api/track/start', {method:'POST'});
+  if (r.ok) {
+    log(r.arm_bridge ? '开始追踪' : '开始追踪 (arm_bridge 不可达，仅检测)', r.arm_bridge ? 'ok' : 'warn');
+    showStream(true);
+  } else log('启动失败: ' + r.error, 'err');
+  refreshHealth(); refreshTrackerStatus();
+};
+$('btn-track-stop').onclick = async () => {
+  await api('/api/track/stop', {method:'POST'});
+  log('追踪已停止');
+  refreshHealth(); refreshTrackerStatus();
+};
+$('btn-arm-home').onclick = async () => {
+  const r = await api('/api/arm/home', {method:'POST'});
+  log(r.ok ? '机械臂已归位' : ('归位失败: ' + r.error), r.ok ? 'ok' : 'err');
+};
+
+// ── config ────────────────────────────────────────────────────────
+function parseTuple(s) {
+  return String(s||'').split(/[,\s]+/).filter(Boolean).map(Number);
+}
+function fillTuple(id, arr) {
+  $(id).value = arr.join(', ');
+}
+
+function applyBackendVisibility() {
+  const b = $('cfg-fd-backend').value;
+  document.querySelectorAll('[data-only]').forEach(el => {
+    el.style.display = (el.dataset.only === b) ? '' : 'none';
+  });
+}
+$('cfg-fd-backend').addEventListener('change', applyBackendVisibility);
+
+async function loadConfigToForm() {
+  const cfg = await api('/api/config');
+  const fd = cfg.face_detect || {};
+  $('cfg-fd-backend').value = fd.backend || 'haar';
+  $('cfg-haar-sf').value    = fd.haar_scale_factor ?? 1.1;
+  $('cfg-haar-mn').value    = fd.haar_min_neighbors ?? 5;
+  $('cfg-haar-ms').value    = fd.haar_min_size ?? 60;
+  $('cfg-mp-conf').value    = fd.mediapipe_min_confidence ?? 0.5;
+  $('cfg-mp-model').value   = String(fd.mediapipe_model_selection ?? 0);
+  applyBackendVisibility();
+
+  const t = cfg.face_tracking || {};
+  $('cfg-pick').value     = t.pick || 'largest';
+  $('cfg-hz').value       = t.loop_hz ?? 10;
+  $('cfg-deadzone').value = t.deadzone_px ?? 25;
+  $('cfg-smooth').value   = t.smoothing ?? 0.5;
+  $('cfg-fovh').value     = t.fov_h_deg ?? 60;
+  $('cfg-fovv').value     = t.fov_v_deg ?? 45;
+  $('cfg-yawkp').value    = t.yaw_kp ?? 0.45;
+  $('cfg-pitchkp').value  = t.pitch_kp ?? 0.45;
+  $('cfg-maxyaw').value   = t.max_yaw_step_deg ?? 8;
+  $('cfg-maxpitch').value = t.max_pitch_step_deg ?? 6;
+  const hp = t.home_pose || {};
+  fillTuple('cfg-home-xyz', [hp.x ?? 0.18, hp.y ?? 0.0, hp.z ?? 0.10]);
+  $('cfg-home-pitch').value = hp.pitch ?? -10.0;
+  fillTuple('cfg-yaw-range', [t.yaw_min_deg ?? -75, t.yaw_max_deg ?? 75]);
+  fillTuple('cfg-pitch-range', [t.pitch_min_deg ?? -45, t.pitch_max_deg ?? 35]);
+}
+
+function buildPatch() {
+  const xyz = parseTuple($('cfg-home-xyz').value);
+  const yawR = parseTuple($('cfg-yaw-range').value);
+  const piR  = parseTuple($('cfg-pitch-range').value);
+  return {
+    face_detect: {
+      backend: $('cfg-fd-backend').value,
+      haar_scale_factor: parseFloat($('cfg-haar-sf').value),
+      haar_min_neighbors: parseInt($('cfg-haar-mn').value),
+      haar_min_size: parseInt($('cfg-haar-ms').value),
+      mediapipe_min_confidence: parseFloat($('cfg-mp-conf').value),
+      mediapipe_model_selection: parseInt($('cfg-mp-model').value),
+    },
+    face_tracking: {
+      pick: $('cfg-pick').value,
+      loop_hz: parseInt($('cfg-hz').value),
+      deadzone_px: parseFloat($('cfg-deadzone').value),
+      smoothing: parseFloat($('cfg-smooth').value),
+      fov_h_deg: parseFloat($('cfg-fovh').value),
+      fov_v_deg: parseFloat($('cfg-fovv').value),
+      yaw_kp: parseFloat($('cfg-yawkp').value),
+      pitch_kp: parseFloat($('cfg-pitchkp').value),
+      max_yaw_step_deg: parseFloat($('cfg-maxyaw').value),
+      max_pitch_step_deg: parseFloat($('cfg-maxpitch').value),
+      home_pose: {
+        x: xyz[0] ?? 0.18, y: xyz[1] ?? 0.0, z: xyz[2] ?? 0.10,
+        pitch: parseFloat($('cfg-home-pitch').value),
+      },
+      yaw_min_deg: yawR[0] ?? -75, yaw_max_deg: yawR[1] ?? 75,
+      pitch_min_deg: piR[0] ?? -45, pitch_max_deg: piR[1] ?? 35,
+    },
+  };
+}
+async function applyConfig(persist=false) {
+  const r = await api('/api/config', {
+    method: 'POST',
+    body: JSON.stringify({patch: buildPatch(), persist}),
+  });
+  if (r.ok) log(persist ? '配置已保存到 default.yaml' : '配置已应用 (仅当前进程)', 'ok');
+  else log('应用失败: ' + r.error, 'err');
+}
+$('btn-apply').onclick   = () => applyConfig(false);
+$('btn-persist').onclick = () => applyConfig(true);
+$('btn-reload-cfg').onclick = loadConfigToForm;
+$('btn-reload-detector').onclick = async () => {
+  const r = await api('/api/config', {
+    method: 'POST',
+    body: JSON.stringify({patch: {face_detect: buildPatch().face_detect}, persist: false}),
+  });
+  log(r.ok ? '检测器已重载' : ('重载失败: '+r.error), r.ok ? 'ok' : 'err');
+  refreshHealth();
+};
+$('btn-clear-log').onclick = () => { $('log').innerHTML = ''; };
+
+// ── boot ──────────────────────────────────────────────────────────
+loadConfigToForm();
+refreshHealth();
+showStream(false);
+setInterval(refreshHealth, 3000);
+setInterval(refreshTrackerStatus, 700);
 </script>
 </body>
 </html>

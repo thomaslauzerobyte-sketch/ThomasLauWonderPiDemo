@@ -1,150 +1,100 @@
-# WonderPi 机械臂 · 自动录视频与拆帧识别
+# ThomasLauWonderPiDemo · 人脸追踪
 
-基于树莓派（WonderPi）与机械臂，搭建「录制 → 拆帧 → 识别 → 执行」的闭环，用于环境/任务过程记录与视觉引导动作。
+最小化的人脸追踪 Demo。摄像头检测人脸 → 计算像素误差 → 通过 IK 让机械臂
+末端绕 Z 轴旋转 (yaw) 与改变 pitch，使脸保持在画面中心。
 
-## 一、项目目标
+## 模块结构
 
-| 能力 | 说明 |
-|------|------|
-| **自动录制视频** | 按触发条件或定时录制环境/任务过程（USB 摄像头、CSI 相机或 WonderPi 配套视觉模块） |
-| **自动拆帧** | 将视频转为有序图像序列，便于批处理与标注 |
-| **图像识别** | 对单帧或序列做目标检测 / 分类，输出类别、框或关键点 |
-| **机械臂控制** | 根据识别结果执行抓取、指向、跟随等动作（与舵机/总线舵机协议对接） |
-
-## 二、整体流程
-
-```text
-相机 ──► 录制(.mp4 等) ──► 拆帧(图像序列) ──► 模型推理 ──► 坐标/类别
-                                                      │
-                                                      ▼
-                                              机械臂运动规划与执行
+```
+app.py                         Flask WebUI（相机 / 检测 / 追踪 / 配置）
+scripts/
+  arm_bridge.py                ROS2 端长驻进程（Docker 容器内运行，端口 9091）
+  common.py                    路径 / YAML 配置 / 工具函数
+  deptrum_camera.py            Deptrum Aurora 930 SDK Python 包装
+  list_cameras.py              枚举本机相机
+  face_detector.py             FaceDetector：Mediapipe 优先 + Haar 回退
+  face_tracker.py              FaceTracker：闭环 P 控制 + arm_bridge IK
+config/
+  default.yaml                 相机 / 检测器 / 追踪参数
+web/
+  index.html                   单页 WebUI
 ```
 
-建议将各环节做成可独立运行的脚本或服务，再通过配置文件或消息（如 ROS 2 / 简单 JSON）串联，便于在树莓派上分步调试。
+## 快速开始
 
-## 三、硬件与环境
+```bash
+# 1. 安装依赖
+.venv/bin/pip install -r requirements.txt
+# 可选：更高精度
+# .venv/bin/pip install mediapipe
 
-- **主控**：树莓派（WonderPi 套件所适配型号）
-- **视觉**：CSI / USB 摄像头（分辨率与帧率按算力选择，例如 640×480@30fps 起步）
-- **机械臂**：WonderPi 配套机械臂及驱动板（具体型号以官方文档为准）
-- **供电与固定**：注意臂与相机相对位姿稳定，便于手眼标定（若需像素坐标到机械坐标转换）
+# 2. (机械臂联动需要) 在 Docker 容器内启动 arm_bridge
+docker exec -d -u ubuntu ArmPiUltra bash -c \
+  'source ~/.zshrc 2>/dev/null && python3 /home/ubuntu/arm_bridge.py'
 
-## 四、软件栈建议（可按实际套件调整）
-
-| 环节 | 常用方案 |
-|------|----------|
-| 录制 / 拆帧 | `ffmpeg`、`OpenCV`（Python：`cv2.VideoCapture` / `VideoWriter`） |
-| 检测 / 分类 | `ONNX Runtime`、`TensorFlow Lite`、`PyTorch`（轻量模型如 YOLOv8n、MobileNet） |
-| 机械臂 | WonderPi 官方 SDK / 串口或 CAN 协议文档；若有 ROS 2 支持可统一用话题与服务 |
-
-在 ARM 上优先选用 **INT8 量化** 或 **TFLite/ONNX** 小模型，以降低延迟与发热。
-
-## 五、目录规划（建议）
-
-后续可在本仓库中按模块落代码，例如：
-
-```text
-ThomasLauWonderPiDemo/
-├── README.md                 # 本说明
-├── config/                   # 相机参数、臂限位、模型路径等
-├── scripts/
-│   ├── common.py             # 配置与路径
-│   ├── list_cameras.py       # 探测 V4L2 / rpicam / OpenCV 可用相机
-│   ├── record_video.py       # 自动录制
-│   ├── extract_frames.py     # 视频拆帧
-│   ├── infer.py              # 单帧/批量推理
-│   ├── arm_demo.py           # 根据识别结果驱动机械臂
-│   └── pipeline.py           # 一键串联（录→拆帧→推理→臂控演示）
-├── models/                   # 权重文件（勿提交大文件，可用下载脚本）
-└── data/
-    ├── videos/               # 原始视频
-    └── frames/               # 拆帧输出
+# 3. 启动 WebUI
+.venv/bin/python app.py
+# 浏览器访问 http://<pi>:5000
 ```
 
-## 六、快速开始
+## 控制思路
 
-1. **安装依赖**
+- 摄像头随末端运动；末端在 `home_pose` (x, y, z) 处保持注视姿态
+- 每个控制周期 (`loop_hz`)：
+  1. 读一帧 → 跑检测 → 选「主脸」（默认最大框）
+  2. 像素误差 (cx-w/2, cy-h/2) → 角度误差（按 FOV 比例）
+  3. P 控制 + EMA 平滑 + 单步限幅 → 累加到 yaw / pitch
+  4. 旋转 (x0, y0) 得到新 (x, y)，用 pitch 调用 `/ik_move`
+- 连续 N 帧或 T 秒未检测到人脸 → 归位到 `home_pose`
 
-   ```bash
-   cd /home/pi/apps/ThomasLauWonderPiDemo
-   python3 -m venv .venv
-   source .venv/bin/activate
-   pip install -U pip -r requirements.txt
-   ```
+所有参数都可在 WebUI 右侧实时改并写回 `config/default.yaml`。
 
-2. **探测相机（无画面时先跑）**
+## API
 
-   ```bash
-   python3 scripts/list_cameras.py
-   ```
+| 路径 | 方法 | 说明 |
+|---|---|---|
+| `/`                         | GET  | WebUI 单页 |
+| `/api/health`               | GET  | 综合状态（相机/检测器/追踪/arm_bridge） |
+| `/api/camera/open`          | POST | 打开相机（自动选 backend） |
+| `/api/camera/close`         | POST | 关闭相机（同时停止追踪） |
+| `/api/camera/status`        | GET  | 是否已打开 + backend 名 |
+| `/api/stream?annotate=1`    | GET  | MJPEG 流（带绿/灰检测框） |
+| `/api/snapshot?annotate=1`  | GET  | 单张 JPEG（响应头 X-Faces） |
+| `/api/face/detect`          | GET  | 单帧人脸检测（JSON） |
+| `/api/track/start`          | POST | 开启追踪线程 |
+| `/api/track/stop`           | POST | 停止追踪线程 |
+| `/api/track/status`         | GET  | 追踪状态（yaw/pitch/fps/丢失帧/最近错误等） |
+| `/api/arm/home`             | POST | 机械臂回到 home_pose |
+| `/api/arm/status`           | GET  | arm_bridge 是否在线 |
+| `/api/config`               | GET  | 读当前配置（含运行时覆盖） |
+| `/api/config`               | POST | `{"patch": {...}, "persist": false}` 更新配置 |
 
-   树莓派新版系统往往**没有** `/dev/video0`，CSI 相机需用 `rpicam-vid` / `picamera2`，不能仅靠 OpenCV 的 `index=0`。
+## 配置要点（config/default.yaml）
 
-3. **录制（输出到 `data/videos/`）**
+```yaml
+face_detect:
+  backend: haar          # mediapipe | haar（mediapipe 未装会自动回退）
 
-   ```bash
-   python3 scripts/record_video.py --seconds 10
-   ```
+face_tracking:
+  pick: largest          # largest | center
+  deadzone_px: 25        # 像素死区（小于此值不动）
+  smoothing: 0.5         # EMA 平滑（0=关）
+  loop_hz: 10            # 控制频率
+  fov_h_deg: 60          # 估计水平 FOV，错则收敛过慢/过冲
+  fov_v_deg: 45
+  yaw_kp: 0.45
+  pitch_kp: 0.45
+  max_yaw_step_deg: 8    # 单步上限，防大动作
+  max_pitch_step_deg: 6
+  home_pose: {x: 0.18, y: 0.0, z: 0.10, pitch: -10.0}
+  yaw_min_deg: -75
+  yaw_max_deg:  75
+  pitch_min_deg: -45
+  pitch_max_deg:  35
+```
 
-   默认 `camera.backend: auto`：先试 OpenCV，再试 `rpicam-vid`，再试 `picamera2`（虚拟环境需 `pip install picamera2`）。也可强制：`--backend opencv` / `rpicam` / `picamera2`。
+调参建议：
 
-   若编码失败，可编辑 `config/default.yaml` 将 `recording.fourcc` 改为 `MJPG` 或 `XVID`。
-
-4. **拆帧**
-
-   ```bash
-   python3 scripts/extract_frames.py --video data/videos/capture_YYYYMMDD_HHMMSS.mp4
-   ```
-
-5. **推理（默认 Haar 人脸检测；ONNX 分类见下）**
-
-   ```bash
-   python3 scripts/infer.py --source data/frames/run_YYYYMMDD_HHMMSS/frame_000000.jpg
-   python3 scripts/infer.py --source data/frames/run_YYYYMMDD_HHMMSS --json-out data/frames/_batch.json
-   ```
-
-   使用 ONNX：将模型放到 `models/model.onnx`，安装 `onnxruntime`，在 `config/default.yaml` 中设置 `inference.method: onnx`，并按模型输入调整 `onnx_input_size`；类别名可选 `config/class_names.example.txt`。
-
-6. **机械臂演示（默认 mock，仅打印归一化坐标）**
-
-   ```bash
-   python3 scripts/arm_demo.py --json data/frames/_batch.json
-   ```
-
-7. **一键流水线（录一段 → 拆帧 → 对首帧推理 → mock 臂控）**
-
-   ```bash
-   python3 scripts/pipeline.py --seconds 5
-   ```
-
-   无摄像头时可用任意本地视频手动跑：`extract_frames.py` → `infer.py` → `arm_demo.py`。
-
-8. **Web UI（推荐）**
-
-   ```bash
-   python3 app.py --port 5000
-   ```
-
-   打开浏览器访问 `http://<树莓派IP>:5000`（本机可用 `http://localhost:5000`）。
-   Web 界面整合了：实时预览、录制、拆帧、识别、机械臂控制、一键流水线。
-
-## 七、开发顺序建议
-
-1. 打通 **相机预览 + 短视频录制**，确认存储路径与磁盘空间。
-2. 实现 **拆帧** 与命名规则，保证与标注/训练流水线一致。
-3. 在 PC 或 Pi 上训练/导出 **轻量模型**，在 Pi 上实测 FPS 与准确率。
-4. **单动作开环**（如固定点抓取），再过渡到 **跟踪/跟随**（需控制周期与预测）。
-
-## 八、注意事项
-
-- 长时间录制注意 SD 卡寿命与散热；可将视频写到 USB 硬盘。
-- 机械臂运动前务必设置 **软限位与急停**，避免误识别导致碰撞。
-- 模型与 `numpy`/推理库版本需与树莓派系统（32/64 位）一致，避免二进制不兼容。
-
-## 九、许可与致谢
-
-硬件与 SDK 以 **WonderPi / 厂商文档** 为准；本 README 描述的是通用实现思路，具体 API 名称以官方为准。
-
----
-
-**维护者**：Thomas Lau · 项目代号：`ThomasLauWonderPiDemo`
+- **抖动**：增大 `smoothing` 或 `deadzone_px`，减小 Kp
+- **跟不上**：增大 Kp 或 `loop_hz`；如果一致地偏一边，调 `fov_*` 与实际相机一致
+- **失控/急动**：减小 `max_*_step_deg` 与 Kp

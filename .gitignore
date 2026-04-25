@@ -11,11 +11,6 @@ data/frames/*
 !data/frames/.gitkeep
 data/tasks/*
 !data/tasks/.gitkeep
-models/*.onnx
-models/*.tflite
-models/*.pt
-config/calibration.json
-config/camera_info.yaml
 *.log
 .pytest_cache/
 .mypy_cache/

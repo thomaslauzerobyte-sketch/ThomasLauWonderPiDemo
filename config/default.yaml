@@ -1,113 +1,61 @@
-paths:
-  videos_dir: data/videos
-  frames_dir: data/frames
-  model_path: models/model.onnx
-  class_names: config/class_names.example.txt
-
 camera:
-  # auto | ros_web | opencv | rpicam | picamera2 | deptrum
-  # ros_web: 从 Docker 容器内的 ROS2 web_video_server 读取画面（推荐，
-  #          当 Docker 已占用深度相机时自动使用此模式）
-  # auto：依次尝试 ros_web → opencv → deptrum → picamera2
   backend: auto
   index: 0
   width: 640
   height: 480
   fps: 12
-  # ROS2 web_video_server 地址（Docker host 网络模式，端口 8080）
-  ros_web_video_url: "http://localhost:8080"
-  # 打开相机时依次尝试这些图像话题（深度 RGB 未出图时会卡住，故放多个备选）
+  ros_web_video_url: http://localhost:8080
   ros_snapshot_topics:
-    - /depth_cam/rgb/image_raw
-    - /calibration/image_result
-    - /object_tracking/image_result
-    - /lab_config_manager/image_result
-  # 单次快照最大等待秒数（避免 web_video_server 在无帧时无限阻塞）
+  - /depth_cam/rgb/image_raw
   ros_web_timeout_sec: 4
-  # OpenCV 回退时依次尝试的设备索引（树莓派上 USB 相机常在 0 或 2）
-  opencv_indices: [0, 1, 2, 3, 4, 5]
-  # Deptrum 专用: 分辨率模式索引
+  opencv_indices:
+  - 0
+  - 1
+  - 2
+  - 3
+  - 4
+  - 5
   resolution_mode_index: 2
-
-recording:
-  default_duration_sec: 30
-  # OpenCV fourcc: mp4v / MJPG / XVID（依平台与编码器而定）
-  fourcc: mp4v
-  filename_prefix: capture
-
-extract:
-  image_format: jpg
-  jpeg_quality: 92
-  # 每隔 step 帧保存一张，1 表示全保存
-  frame_step: 1
-  subdir_prefix: run
-
-inference:
-  # haar：内置人脸检测演示；onnx：需 models/model.onnx 与 onnxruntime
-  method: haar
-  onnx_input_size: [224, 224]
-  normalize: true
-
-# detect_method: blue | checkerboard | tag
-detect_method: tag
-
-blue_detect:
-  hsv_lower: [100, 80, 50]
-  hsv_upper: [130, 255, 255]
-  min_area: 500
-  blur_kernel: 5
-
-# 棋盘格标定板检测参数
-# cols/rows: 棋盘格内角点数（不含外框），例如 7×5 格的板 → cols=6, rows=4
-checkerboard:
-  cols: 5
-  rows: 4
-
-# 棋盘格 3D 批量标定（可选，与 calibration3d 仿射拟合配合）
-# cols/rows 为自动尝试的 hint；实际尺寸在 autotry_min_inner～autotry_max_inner 内枚举
-calibration_board:
-  cols: 5
-  rows: 4
-  square_size_mm: 25
-  board_yaw_deg: 0
-  autotry_min_inner: 3
-  autotry_max_inner: 16
-
-# AprilTag 单标记 3D 批量标定（推荐双目深度：一个 Tag 即 4 个约束点）
-# tag_edge_mm：打印图黑色外框边长（毫米，全边长，非模块）
-# family：OpenCV 预定义字典名，如 DICT_APRILTAG_36h11
-calibration_tag:
-  family: DICT_APRILTAG_36h11
-  tag_edge_mm: 40
-  tag_id: null
-  yaw_deg: 0
-  # 官方手眼矩阵（与 peripherals/camera_info.yaml 一致）；置 null 则仅支持「几何中心 + IK」模式
-  camera_info_file: null
-
-# 黑白标记板(TAG) 检测参数
-tag_detect:
-  min_area: 800
-
-teach:
-  pick_z: 0.02
-  move_z: 0.08
-
+face_detect:
+  backend: mediapipe
+  mediapipe_min_confidence: 0.5
+  mediapipe_model_selection: 0
+  haar_scale_factor: 1.1
+  haar_min_neighbors: 5
+  haar_min_size: 60
+face_tracking:
+  pick: largest
+  deadzone_px: 25
+  smoothing: 0.5
+  lost_frames_to_home: 30
+  lost_seconds_to_home: 3.0
+  loop_hz: 10
+  fov_h_deg: 60
+  fov_v_deg: 45
+  yaw_kp: 0.45
+  pitch_kp: 0.45
+  yaw_min_deg: -75
+  yaw_max_deg: 75
+  pitch_min_deg: -45
+  pitch_max_deg: 35
+  max_yaw_step_deg: 8
+  max_pitch_step_deg: 6
+  home_pose:
+    x: 0.18
+    y: 0
+    z: 0.1
+    pitch: -10
+  move_duration: 0.12
 arm:
-  # driver: mock | hiwonder
-  # mock: 仅打印日志，不控制硬件
-  # hiwonder: 通过 docker exec 调用 ROS2 控制 ArmPi Ultra
   driver: hiwonder
   mock: false
-
-  # HiWonder ArmPi Ultra 配置
   docker_container: ArmPiUltra
-  ik_pitch: -90.0
+  ik_pitch: -10.0
   grip_open_pulse: 100
   grip_close_pulse: 700
-  move_duration: 0.8
-  step_delay_sec: 0.5
-  # 需要翻转方向的舵机编号列表（pulse → 1000 - pulse）
-  servo_invert: [5]
-
+  move_duration: 0.12
+  step_delay_sec: 0.0
+  servo_invert:
+  - 5
   image_width: 640
   image_height: 480

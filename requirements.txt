@@ -1,9 +1,11 @@
-numpy>=1.24.0
-opencv-python-headless>=4.8.0
+# numpy 必须 <2：mediapipe 0.10.x 与本机已装的 opencv 4.10.x 都只支持 numpy 1.x
+numpy>=1.24,<2
+# opencv-python-headless 4.11+ 强制 numpy>=2，会与 mediapipe 冲突，钉到 4.10.x
+opencv-python-headless>=4.10,<4.11
 PyYAML>=6.0
-transforms3d>=0.4.1
 flask>=3.0.0
-# 可选：ONNX 推理（树莓派上请选与系统匹配的 wheel）
-# onnxruntime>=1.16.0
-# 可选：arm.mock=false 且使用串口占位驱动时
-# pyserial>=3.5
+
+# 可选：更高精度的人脸检测后端（face_detect.backend = mediapipe）
+# 安装：.venv/bin/pip install "mediapipe>=0.10.9,<0.11"
+# 未安装时 face_detector 会自动回退到 OpenCV Haar 级联。
+# mediapipe>=0.10.9,<0.11
